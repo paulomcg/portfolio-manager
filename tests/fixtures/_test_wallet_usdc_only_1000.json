@@ -1,0 +1,1 @@
+{"wallet_address": "test_wallet", "ts_utc": "2026-05-11T14:30:22Z", "tokens": [{"asset": "USDC", "chain": "solana", "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "qty": 1000, "mark_price_usd": 1.0, "value_usd": 1000}]}
