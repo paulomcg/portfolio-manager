@@ -229,13 +229,50 @@ class TestRulesEvaluate:
 # ---------------------------------------------------------------------------
 
 
-class TestStubs:
-    def test_watch_still_stubbed(self):
-        # watch ships in M4; should still return not_implemented for now.
-        # Pass a positional so argparse's REMAINDER doesn't reject --flags.
-        r = _run("watch", "placeholder")
+class TestWatchCli:
+    def test_monitor_mode_three_iterations(self, isolated_state):
+        r = _run(
+            "watch",
+            "--config", str(EXAMPLES / "conservative-majors.yaml"),
+            "--positions-source", str(FIXTURES / "wallet_snapshot.json"),
+            "--pnl-source", str(FIXTURES / "pnl_snapshot.json"),
+            "--interval", "0",
+            "--iterations", "3",
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 0
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        # 3 cycle records + 1 final summary line
+        assert len(lines) == 4
+        cycles = [json.loads(l) for l in lines[:3]]
+        for c in cycles:
+            assert c["mode"] == "monitor"
+            assert c["errors"] == []
+        summary = json.loads(lines[3])
+        assert summary["ok"] is True
+        assert summary["result"]["iterations"] == 3
+
+    def test_live_flag_rejected_until_m5(self, isolated_state):
+        r = _run(
+            "watch",
+            "--config", str(EXAMPLES / "conservative-majors.yaml"),
+            "--positions-source", str(FIXTURES / "wallet_snapshot.json"),
+            "--live",
+            "--max-loss-usd", "10",
+            extra_env=isolated_state,
+        )
         assert r.returncode == 1
-        assert r.stderr.startswith("FAILED: not_implemented watch")
+        assert r.stderr.startswith("FAILED: not_implemented live_mode")
+
+    def test_missing_wallet_and_no_source(self, isolated_state):
+        r = _run(
+            "watch",
+            "--config", str(EXAMPLES / "conservative-majors.yaml"),
+            "--iterations", "1",
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 1
+        assert r.stderr.startswith("FAILED: wallet_required")
 
 
 # ---------------------------------------------------------------------------

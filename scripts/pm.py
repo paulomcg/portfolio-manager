@@ -31,7 +31,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from scripts import alerts, audit, positions, rule_engine, schema  # noqa: E402
+from scripts import alerts, audit, positions, rule_engine, schema, watch  # noqa: E402
+from scripts.wallet_source import (  # noqa: E402
+    OnchainosWalletSource,
+    SyntheticWalletSource,
+    WalletSource,
+)
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -397,7 +402,67 @@ def cmd_audit_show(args: argparse.Namespace) -> int:
     return _ok({"count": len(rows), "rows": rows})
 
 
-# Generic stub for commands not yet implemented (watch ships in M4/M5).
+# ---------------------------------------------------------------------------
+# Watch loop (M4 monitor mode; live mode lands in M5)
+# ---------------------------------------------------------------------------
+
+
+def _build_wallet_source(args: argparse.Namespace) -> tuple[WalletSource | None, str | None]:
+    """Construct the right WalletSource. Returns (source, failed_line_or_None)."""
+    if args.positions_source:
+        src = SyntheticWalletSource(
+            wallet_path=args.positions_source, pnl_path=args.pnl_source
+        )
+        return src, None
+    if not args.wallet:
+        return None, "wallet_required pass --wallet <address> or --positions-source <json>"
+    src = OnchainosWalletSource(wallet_address=args.wallet, chain=args.chain)
+    return src, None
+
+
+@_wrap
+def cmd_watch(args: argparse.Namespace) -> int:
+    # M5 live-mode flags. v1 monitor implementation accepts them but fails
+    # loud if --live is passed without M5 wired.
+    if args.live:
+        return _failed("not_implemented live_mode ships in M5")
+
+    ok, rules_cfg = _read_yaml(args.config)
+    if not ok:
+        return _failed(rules_cfg)
+    try:
+        schema.validate(rules_cfg)
+    except Exception as e:
+        return _failed(_format_schema_error(e))
+
+    src, err = _build_wallet_source(args)
+    if err is not None:
+        return _failed(err)
+
+    # Resolve wallet_address used for HWM/audit keys.
+    wallet_address = (
+        args.wallet
+        or (args.positions_source and Path(args.positions_source).stem)
+        or "synthetic"
+    )
+    interval = args.interval if args.interval is not None else (
+        rules_cfg.get("poll", {}).get("interval_seconds", 60)
+    )
+    try:
+        summary = watch.run_monitor(
+            rules_config=rules_cfg,
+            wallet_source=src,
+            wallet_address=wallet_address,
+            interval_seconds=interval,
+            iterations=args.iterations,
+        )
+    except Exception as e:  # noqa: BLE001
+        return _failed(f"internal_error watch loop: {type(e).__name__}: {e}")
+    print(json.dumps({"ok": True, "result": summary}, default=str))
+    return EXIT_OK
+
+
+# Generic stub for commands not yet implemented.
 
 
 @_wrap
@@ -532,10 +597,37 @@ def build_parser() -> argparse.ArgumentParser:
     aush.add_argument("--limit", type=int, default=100)
     aush.set_defaults(_handler=cmd_audit_show)
 
-    # watch -- still a stub until M4
-    wa = sub.add_parser("watch", help="watch commands (M4)")
-    wa.add_argument("rest", nargs=argparse.REMAINDER)
-    wa.set_defaults(_handler=cmd_stub, _stub_name="watch")
+    # watch -----------------------------------------------------------
+    wa = sub.add_parser(
+        "watch",
+        help="Run the monitor/live watch loop against a wallet + rule config",
+    )
+    wa.add_argument("--config", required=True, help="Path to rules YAML")
+    wa.add_argument("--wallet", default=None, help="Wallet address (omit when --positions-source is set)")
+    wa.add_argument("--chain", default="solana")
+    wa.add_argument(
+        "--positions-source",
+        dest="positions_source",
+        default=None,
+        help="Path to a wallet snapshot JSON for synthetic / no-keys runs",
+    )
+    wa.add_argument(
+        "--pnl-source",
+        dest="pnl_source",
+        default=None,
+        help="Optional path to a per-token PnL JSON (synthetic mode)",
+    )
+    wa.add_argument("--interval", type=int, default=None, help="Seconds between cycles")
+    wa.add_argument("--iterations", type=int, default=None, help="Cap on iterations (omit for infinite)")
+    wa.add_argument("--live", action="store_true", help="Execute swaps (M5 — fails loud until then)")
+    wa.add_argument(
+        "--max-loss-usd",
+        dest="max_loss_usd",
+        type=float,
+        default=None,
+        help="Hard kill switch (live mode only)",
+    )
+    wa.set_defaults(_handler=cmd_watch)
 
     return p
 
