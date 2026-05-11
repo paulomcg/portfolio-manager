@@ -252,17 +252,41 @@ class TestWatchCli:
         assert summary["ok"] is True
         assert summary["result"]["iterations"] == 3
 
-    def test_live_flag_rejected_until_m5(self, isolated_state):
+    def test_live_without_max_loss_fails(self, isolated_state):
         r = _run(
             "watch",
             "--config", str(EXAMPLES / "conservative-majors.yaml"),
             "--positions-source", str(FIXTURES / "wallet_snapshot.json"),
             "--live",
-            "--max-loss-usd", "10",
             extra_env=isolated_state,
         )
         assert r.returncode == 1
-        assert r.stderr.startswith("FAILED: not_implemented live_mode")
+        assert r.stderr.startswith("FAILED: live_mode_missing_flag")
+
+    def test_live_synthetic_executor_runs(self, isolated_state):
+        # Synthetic executor + tiny iteration cap: full live path without
+        # touching a wallet. The cap-40 rule fires on the synthetic state
+        # (WSOL is 72% of equity) so the loop should produce a fill.
+        r = _run(
+            "watch",
+            "--config", str(EXAMPLES / "conservative-majors.yaml"),
+            "--positions-source", str(FIXTURES / "wallet_snapshot.json"),
+            "--pnl-source", str(FIXTURES / "pnl_snapshot.json"),
+            "--interval", "0",
+            "--iterations", "1",
+            "--live",
+            "--max-loss-usd", "10000",  # generous, so no halt
+            "--executor", "synthetic",
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 0, r.stderr
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        cycle = json.loads(lines[0])
+        assert cycle["mode"] == "live"
+        # At least one fill should have happened (cap-40 fires)
+        assert len(cycle["fills"]) >= 1
+        summary = json.loads(lines[-1])
+        assert summary["result"]["mode"] == "live"
 
     def test_missing_wallet_and_no_source(self, isolated_state):
         r = _run(

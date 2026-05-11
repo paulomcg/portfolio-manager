@@ -32,6 +32,11 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from scripts import alerts, audit, positions, rule_engine, schema, watch  # noqa: E402
+from scripts.executor import (  # noqa: E402
+    OnchainosSwapExecutor,
+    SwapExecutor,
+    SyntheticSwapExecutor,
+)
 from scripts.wallet_source import (  # noqa: E402
     OnchainosWalletSource,
     SyntheticWalletSource,
@@ -422,11 +427,6 @@ def _build_wallet_source(args: argparse.Namespace) -> tuple[WalletSource | None,
 
 @_wrap
 def cmd_watch(args: argparse.Namespace) -> int:
-    # M5 live-mode flags. v1 monitor implementation accepts them but fails
-    # loud if --live is passed without M5 wired.
-    if args.live:
-        return _failed("not_implemented live_mode ships in M5")
-
     ok, rules_cfg = _read_yaml(args.config)
     if not ok:
         return _failed(rules_cfg)
@@ -448,6 +448,21 @@ def cmd_watch(args: argparse.Namespace) -> int:
     interval = args.interval if args.interval is not None else (
         rules_cfg.get("poll", {}).get("interval_seconds", 60)
     )
+
+    # Build the executor only when --live; live mode REQUIRES --max-loss-usd.
+    executor: SwapExecutor | None = None
+    if args.live:
+        if args.max_loss_usd is None:
+            return _failed("live_mode_missing_flag --max-loss-usd")
+        if args.executor == "synthetic":
+            executor = SyntheticSwapExecutor()
+        else:
+            if not args.wallet:
+                return _failed("wallet_required live mode needs --wallet <address>")
+            executor = OnchainosSwapExecutor(
+                wallet_address=args.wallet, chain=args.chain
+            )
+
     try:
         summary = watch.run_monitor(
             rules_config=rules_cfg,
@@ -455,6 +470,8 @@ def cmd_watch(args: argparse.Namespace) -> int:
             wallet_address=wallet_address,
             interval_seconds=interval,
             iterations=args.iterations,
+            executor=executor,
+            max_loss_usd=args.max_loss_usd,
         )
     except Exception as e:  # noqa: BLE001
         return _failed(f"internal_error watch loop: {type(e).__name__}: {e}")
@@ -619,13 +636,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wa.add_argument("--interval", type=int, default=None, help="Seconds between cycles")
     wa.add_argument("--iterations", type=int, default=None, help="Cap on iterations (omit for infinite)")
-    wa.add_argument("--live", action="store_true", help="Execute swaps (M5 — fails loud until then)")
+    wa.add_argument("--live", action="store_true", help="Execute swaps via the chosen executor")
     wa.add_argument(
         "--max-loss-usd",
         dest="max_loss_usd",
         type=float,
         default=None,
-        help="Hard kill switch (live mode only)",
+        help="Hard kill switch — REQUIRED when --live is set; loop halts when cumulative realized loss exceeds this",
+    )
+    wa.add_argument(
+        "--executor",
+        choices=["onchainos", "synthetic"],
+        default="onchainos",
+        help="Swap executor for live mode (default: onchainos; use 'synthetic' for cap-enforcement demos / tests)",
     )
     wa.set_defaults(_handler=cmd_watch)
 
