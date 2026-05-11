@@ -31,7 +31,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from scripts import alerts, audit, positions, rule_engine, schema, watch  # noqa: E402
+from scripts import alerts, audit, positions, report, rule_engine, schema, watch  # noqa: E402
 from scripts.executor import (  # noqa: E402
     OnchainosSwapExecutor,
     SwapExecutor,
@@ -479,6 +479,44 @@ def cmd_watch(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# Report command (M9 / v0.2.0)
+# ---------------------------------------------------------------------------
+
+
+@_wrap
+def cmd_report(args: argparse.Namespace) -> int:
+    audit_path = Path(args.audit_path) if args.audit_path else None
+    if not args.out:
+        return _failed("report_invalid --out <dir> is required")
+    try:
+        result = report.run(
+            audit_path=audit_path,
+            wallet=args.wallet,
+            since=args.since,
+            until=args.until,
+            out=Path(args.out),
+            title=args.title,
+        )
+    except Exception as e:  # noqa: BLE001
+        return _failed(f"report_failed {type(e).__name__}: {e}")
+    return _ok(
+        {
+            "report_path": str(Path(args.out) / "report.json"),
+            "markdown_path": str(Path(args.out) / "report.md"),
+            "equity_chart_path": str(Path(args.out) / "equity.png"),
+            "cycle_count": result["cycle_count"],
+            "metrics_summary": {
+                k: result["metrics"].get(k)
+                for k in (
+                    "bars", "total_return_pct", "cagr_pct", "sharpe",
+                    "sortino", "max_drawdown_pct"
+                )
+            },
+        }
+    )
+
+
 # Generic stub for commands not yet implemented.
 
 
@@ -613,6 +651,21 @@ def build_parser() -> argparse.ArgumentParser:
     aush.add_argument("--since", default=None, help="ISO 8601 timestamp")
     aush.add_argument("--limit", type=int, default=100)
     aush.set_defaults(_handler=cmd_audit_show)
+
+    # report ----------------------------------------------------------
+    rp = sub.add_parser(
+        "report",
+        help="Compute Sharpe/Sortino/maxDD/win-rate/etc. from a PM audit log",
+    )
+    rp.add_argument("--audit-path", dest="audit_path", default=None,
+                    help="Audit log to read (default: state/audit.jsonl)")
+    rp.add_argument("--wallet", default=None, help="Filter to a single wallet address")
+    rp.add_argument("--since", default=None, help="ISO 8601 timestamp lower bound")
+    rp.add_argument("--until", default=None, help="ISO 8601 timestamp upper bound")
+    rp.add_argument("--out", default=None, required=True,
+                    help="Output directory; will be created if missing")
+    rp.add_argument("--title", default=None, help="Override the chart title")
+    rp.set_defaults(_handler=cmd_report)
 
     # watch -----------------------------------------------------------
     wa = sub.add_parser(
