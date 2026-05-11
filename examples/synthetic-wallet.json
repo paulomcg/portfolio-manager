@@ -1,0 +1,30 @@
+{
+  "wallet_address": "synthetic_demo_wallet",
+  "ts_utc": "2026-05-11T14:30:22Z",
+  "tokens": [
+    {
+      "asset": "WSOL",
+      "chain": "solana",
+      "address": "So11111111111111111111111111111111111111112",
+      "qty": 30.0,
+      "mark_price_usd": 130.0,
+      "value_usd": 3900.0
+    },
+    {
+      "asset": "JTO",
+      "chain": "solana",
+      "address": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+      "qty": 400.0,
+      "mark_price_usd": 3.25,
+      "value_usd": 1300.0
+    },
+    {
+      "asset": "USDC",
+      "chain": "solana",
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "qty": 200.0,
+      "mark_price_usd": 1.0,
+      "value_usd": 200.0
+    }
+  ]
+}

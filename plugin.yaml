@@ -1,0 +1,25 @@
+schema_version: 1
+name: portfolio-manager
+version: "0.1.0"
+description: "Reactive wallet supervisor for OKX Agentic Wallet. Watches a wallet, derives positions from balances + per-token PnL, evaluates a YAML rule config (drawdown halts, position caps, trailing stops) on a schedule, emits structured alerts in monitor mode or executes exits via okx-dex-swap in live mode with a hard max-loss-usd kill switch. Trigger phrases: watch my portfolio, manage my positions, halt on drawdown, position cap, trailing stop, portfolio risk rules, max loss kill switch, alerts queue, ack alerts, audit log."
+author:
+  name: "Paulo Goncalves"
+  github: "paulomcg"
+license: MIT
+category: trading-strategy
+tags:
+  - solana
+  - onchainos
+  - risk-management
+  - position-management
+  - trailing-stop
+  - drawdown
+  - alerts
+  - audit
+
+components:
+  skill:
+    dir: .
+
+api_calls: []
+type: community-developer
