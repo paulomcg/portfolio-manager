@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+state/positions.sqlite
+state/positions.sqlite-journal
+state/audit.jsonl
+state/alerts.jsonl
+.env
+.DS_Store
