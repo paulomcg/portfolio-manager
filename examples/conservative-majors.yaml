@@ -1,0 +1,32 @@
+# Conservative rule set for managing Solana majors.
+#
+# Goal: keep any single position under 40% of equity, exit any position that
+# drops 12% from its high-water mark, and halt the entire portfolio if it
+# drops 15% from its all-time high.
+name: conservative-majors
+wallet: agentic
+poll:
+  interval_seconds: 60
+universe:
+  - { chain: solana, address: "So11111111111111111111111111111111111111112", symbol: WSOL }
+  - { chain: solana, address: "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",    symbol: JTO }
+  - { chain: solana, address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",    symbol: JUP }
+rules:
+  - id: halt-on-portfolio-dd
+    type: halt_on_drawdown
+    threshold_pct: 15
+    action:
+      type: liquidate_all
+      reason: "portfolio drawdown limit reached"
+  - id: per-position-cap
+    type: max_position_pct
+    threshold_pct: 40
+    action:
+      type: trim_to
+      target_pct: 40
+  - id: trailing-stop-all
+    type: trailing_stop
+    pct: 12
+    applies_to: "*"
+    action:
+      type: full_exit

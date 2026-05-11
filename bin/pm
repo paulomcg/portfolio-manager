@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+# pm — Portfolio Manager CLI launcher.
+#
+# Resolves the repo root from this script's location, then invokes the
+# Python entry point. Honors $PM_PYTHON to override the interpreter
+# (defaults to the venv at <repo>/.venv/bin/python if present, else python3).
+
+set -e
+
+here=$(cd "$(dirname "$0")" && pwd -P)
+root=$(cd "$here/.." && pwd -P)
+
+if [ -n "$PM_PYTHON" ]; then
+  py="$PM_PYTHON"
+elif [ -x "$root/.venv/bin/python" ]; then
+  py="$root/.venv/bin/python"
+else
+  py="$(command -v python3 || command -v python)"
+fi
+
+if [ -z "$py" ] || [ ! -x "$py" ]; then
+  echo "FAILED: internal_error pm launcher: no python interpreter found" >&2
+  exit 1
+fi
+
+exec "$py" -m scripts.pm "$@"

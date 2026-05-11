@@ -1,0 +1,36 @@
+{
+  "wallet_address": "synthetic_demo_wallet",
+  "ts_utc": "2026-05-11T14:30:22Z",
+  "total_equity_usd": 5400.0,
+  "high_water_mark_usd": 6000.0,
+  "drawdown_from_hwm_pct": 10.0,
+  "cash_usd": 200.0,
+  "positions": [
+    {
+      "asset": "WSOL",
+      "qty": 30.0,
+      "mark_price_usd": 130.0,
+      "value_usd": 3900.0,
+      "cost_basis_usd": 3000.0,
+      "avg_entry_price_usd": 100.0,
+      "unrealized_pnl_usd": 900.0,
+      "realized_pnl_usd": 0.0,
+      "high_water_mark_usd": 4500.0,
+      "drawdown_from_hwm_pct": 13.33,
+      "source": "auto"
+    },
+    {
+      "asset": "JTO",
+      "qty": 400.0,
+      "mark_price_usd": 3.25,
+      "value_usd": 1300.0,
+      "cost_basis_usd": 1200.0,
+      "avg_entry_price_usd": 3.0,
+      "unrealized_pnl_usd": 100.0,
+      "realized_pnl_usd": 0.0,
+      "high_water_mark_usd": 1500.0,
+      "drawdown_from_hwm_pct": 13.33,
+      "source": "auto"
+    }
+  ]
+}

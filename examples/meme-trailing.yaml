@@ -1,0 +1,28 @@
+# Aggressive trailing-stop rules tuned for high-vol Solana memecoins.
+#
+# These are MUCH tighter than the conservative-majors config because memecoins
+# regularly draw down 20-30% intra-day and the goal is to lock in gains fast.
+# Use this only on positions you've explicitly opened with degen intent.
+name: meme-trailing
+wallet: agentic
+poll:
+  interval_seconds: 30
+rules:
+  - id: halt-on-portfolio-dd
+    type: halt_on_drawdown
+    threshold_pct: 25
+    action:
+      type: liquidate_all
+      reason: "meme book drawdown limit"
+  - id: per-position-cap-20pct
+    type: max_position_pct
+    threshold_pct: 20
+    action:
+      type: trim_to
+      target_pct: 20
+  - id: trailing-stop-meme-tight
+    type: trailing_stop
+    pct: 18
+    applies_to: "*"
+    action:
+      type: full_exit
