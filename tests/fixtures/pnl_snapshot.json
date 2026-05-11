@@ -1,0 +1,12 @@
+{
+  "solana:So11111111111111111111111111111111111111112": {
+    "asset": "WSOL",
+    "unrealized_pnl_usd": 900.0,
+    "realized_pnl_usd": 50.0
+  },
+  "solana:jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL": {
+    "asset": "JTO",
+    "unrealized_pnl_usd": 100.0,
+    "realized_pnl_usd": 0.0
+  }
+}

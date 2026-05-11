@@ -31,7 +31,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from scripts import rule_engine, schema  # noqa: E402
+from scripts import alerts, audit, positions, rule_engine, schema  # noqa: E402
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -209,8 +209,195 @@ def cmd_rules_evaluate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-# Stub handlers for future-milestone commands so `pm position`, `pm alerts`, etc.
-# fail loudly rather than silently doing nothing.
+# ---------------------------------------------------------------------------
+# Position commands (M3)
+# ---------------------------------------------------------------------------
+
+
+def _require_wallet(args: argparse.Namespace) -> str | None:
+    w = getattr(args, "wallet", None)
+    if not w:
+        _failed("wallet_required pass --wallet <address>")
+        return None
+    return w
+
+
+@_wrap
+def cmd_position_list(args: argparse.Namespace) -> int:
+    """List currently-tracked positions: manual overrides + last-known HWMs.
+
+    For derived positions from a live wallet, use `pm position snapshot`
+    (which re-runs derivation against the latest wallet+pnl data).
+    """
+    wallet = _require_wallet(args)
+    if wallet is None:
+        return EXIT_FAILED
+    overrides = positions.load_manual_overrides(wallet)
+    hwms = positions.load_hwm_state(wallet)
+    return _ok(
+        {
+            "wallet_address": wallet,
+            "manual_overrides": overrides,
+            "high_water_marks": hwms,
+        }
+    )
+
+
+@_wrap
+def cmd_position_add(args: argparse.Namespace) -> int:
+    wallet = _require_wallet(args)
+    if wallet is None:
+        return EXIT_FAILED
+    positions.upsert_manual_override(
+        wallet_address=wallet,
+        asset=args.asset,
+        qty=args.qty,
+        cost_basis_usd=args.cost_usd,
+        ts_utc=args.ts,
+        notes=args.notes,
+    )
+    audit.append(
+        {
+            "event": "position.add",
+            "wallet": wallet,
+            "asset": args.asset,
+            "qty": args.qty,
+            "cost_basis_usd": args.cost_usd,
+            "notes": args.notes,
+        }
+    )
+    return _ok(
+        {
+            "wallet": wallet,
+            "asset": args.asset,
+            "qty": args.qty,
+            "cost_basis_usd": args.cost_usd,
+            "source": "manual",
+        }
+    )
+
+
+@_wrap
+def cmd_position_update(args: argparse.Namespace) -> int:
+    wallet = _require_wallet(args)
+    if wallet is None:
+        return EXIT_FAILED
+    positions.upsert_manual_override(
+        wallet_address=wallet,
+        asset=args.asset,
+        mark_price_usd=args.mark_price,
+        notes=args.notes,
+    )
+    audit.append(
+        {
+            "event": "position.update",
+            "wallet": wallet,
+            "asset": args.asset,
+            "mark_price_usd": args.mark_price,
+        }
+    )
+    return _ok({"wallet": wallet, "asset": args.asset, "mark_price_usd": args.mark_price})
+
+
+@_wrap
+def cmd_position_close(args: argparse.Namespace) -> int:
+    wallet = _require_wallet(args)
+    if wallet is None:
+        return EXIT_FAILED
+    deleted = positions.delete_manual_override(wallet, args.asset)
+    audit.append(
+        {
+            "event": "position.close",
+            "wallet": wallet,
+            "asset": args.asset,
+            "qty": args.qty,
+            "price_usd": args.price,
+            "removed_override": deleted > 0,
+        }
+    )
+    return _ok(
+        {
+            "wallet": wallet,
+            "asset": args.asset,
+            "qty": args.qty,
+            "price_usd": args.price,
+            "removed_manual_override": deleted > 0,
+        }
+    )
+
+
+@_wrap
+def cmd_position_snapshot(args: argparse.Namespace) -> int:
+    """Run position derivation against an explicit wallet/pnl JSON fixture.
+
+    In M4 this will also be wired against live okx CLI calls; here we accept
+    a JSON file so the synthetic-demo flow works without API keys.
+    """
+    wallet = _require_wallet(args)
+    if wallet is None:
+        return EXIT_FAILED
+    if not args.wallet_snapshot:
+        return _failed("positions_input_invalid pass --wallet-snapshot <json-path>")
+    ok, snap = _read_positions(args.wallet_snapshot)  # JSON loader; same shape rules
+    if not ok:
+        return _failed(snap)
+    pnl_path = args.pnl_snapshot
+    pnl_by_token: dict = {}
+    if pnl_path:
+        ok, pnl_by_token = _read_positions(pnl_path)
+        if not ok:
+            return _failed(pnl_by_token)
+    hwms = positions.load_hwm_state(wallet)
+    overrides = positions.load_manual_overrides(wallet)
+    derived = positions.derive_positions(
+        wallet=snap, pnl_by_token=pnl_by_token, hwm_state=hwms, manual_overrides=overrides
+    )
+    # Persist any HWM growth
+    positions.update_hwm_state(wallet, derived)
+    return _ok(derived)
+
+
+# ---------------------------------------------------------------------------
+# Alerts commands (M3)
+# ---------------------------------------------------------------------------
+
+
+@_wrap
+def cmd_alerts_pending(args: argparse.Namespace) -> int:
+    rows = alerts.pending(
+        wallet_address=args.wallet, severity=args.severity, limit=args.limit
+    )
+    return _ok({"count": len(rows), "alerts": rows})
+
+
+@_wrap
+def cmd_alerts_ack(args: argparse.Namespace) -> int:
+    result = alerts.ack(args.alert_ids)
+    if result["acked"] == 0 and result["not_found"] == len(args.alert_ids):
+        return _failed(f"alert_not_found id={','.join(args.alert_ids)}")
+    return _ok(result)
+
+
+@_wrap
+def cmd_alerts_history(args: argparse.Namespace) -> int:
+    rows = alerts.history(
+        wallet_address=args.wallet, since=args.since, limit=args.limit
+    )
+    return _ok({"count": len(rows), "alerts": rows})
+
+
+# ---------------------------------------------------------------------------
+# Audit commands (M3)
+# ---------------------------------------------------------------------------
+
+
+@_wrap
+def cmd_audit_show(args: argparse.Namespace) -> int:
+    rows = audit.read(limit=args.limit, since=args.since)
+    return _ok({"count": len(rows), "rows": rows})
+
+
+# Generic stub for commands not yet implemented (watch ships in M4/M5).
 
 
 @_wrap
@@ -267,11 +454,88 @@ def build_parser() -> argparse.ArgumentParser:
     )
     re.set_defaults(_handler=cmd_rules_evaluate)
 
-    # position / alerts / audit / watch — stubs in M2 -------------------
-    for stub_name in ("position", "alerts", "audit", "watch"):
-        sp = sub.add_parser(stub_name, help=f"{stub_name} commands (not yet implemented)")
-        sp.add_argument("rest", nargs=argparse.REMAINDER)
-        sp.set_defaults(_handler=cmd_stub, _stub_name=stub_name)
+    # position --------------------------------------------------------
+    pos = sub.add_parser("position", help="Position ledger commands")
+    pos_sub = pos.add_subparsers(dest="subcmd", required=True)
+
+    pl = pos_sub.add_parser("list", help="Show manual overrides + HWMs for a wallet")
+    pl.add_argument("--wallet", required=True)
+    pl.set_defaults(_handler=cmd_position_list)
+
+    pa = pos_sub.add_parser("add", help="Record a manual position override")
+    pa.add_argument("--wallet", required=True)
+    pa.add_argument("--asset", required=True)
+    pa.add_argument("--qty", type=float, required=True)
+    pa.add_argument("--cost-usd", dest="cost_usd", type=float, required=True)
+    pa.add_argument("--ts", default=None, help="Optional ISO 8601 timestamp for the open")
+    pa.add_argument("--notes", default=None)
+    pa.set_defaults(_handler=cmd_position_add)
+
+    pu = pos_sub.add_parser("update", help="Update a manual override's mark price")
+    pu.add_argument("--wallet", required=True)
+    pu.add_argument("--asset", required=True)
+    pu.add_argument("--mark-price", dest="mark_price", type=float, required=True)
+    pu.add_argument("--notes", default=None)
+    pu.set_defaults(_handler=cmd_position_update)
+
+    pc = pos_sub.add_parser("close", help="Remove a manual override (records a closing trade)")
+    pc.add_argument("--wallet", required=True)
+    pc.add_argument("--asset", required=True)
+    pc.add_argument("--qty", type=float, required=True)
+    pc.add_argument("--price", type=float, required=True)
+    pc.set_defaults(_handler=cmd_position_close)
+
+    ps = pos_sub.add_parser(
+        "snapshot", help="Derive a positions snapshot from wallet+pnl JSON inputs"
+    )
+    ps.add_argument("--wallet", required=True)
+    ps.add_argument(
+        "--wallet-snapshot",
+        dest="wallet_snapshot",
+        required=True,
+        help="Path to a WalletSnapshot JSON (or '-' for stdin)",
+    )
+    ps.add_argument(
+        "--pnl-snapshot",
+        dest="pnl_snapshot",
+        default=None,
+        help="Optional path to per-token PnL JSON (or '-' for stdin)",
+    )
+    ps.set_defaults(_handler=cmd_position_snapshot)
+
+    # alerts ----------------------------------------------------------
+    al = sub.add_parser("alerts", help="Alerts queue commands")
+    al_sub = al.add_subparsers(dest="subcmd", required=True)
+
+    ap = al_sub.add_parser("pending", help="List unacked alerts (newest first)")
+    ap.add_argument("--wallet", default=None)
+    ap.add_argument("--severity", choices=["info", "warn", "critical"], default=None)
+    ap.add_argument("--limit", type=int, default=100)
+    ap.set_defaults(_handler=cmd_alerts_pending)
+
+    aa = al_sub.add_parser("ack", help="Mark one or more alerts as acked")
+    aa.add_argument("alert_ids", nargs="+")
+    aa.set_defaults(_handler=cmd_alerts_ack)
+
+    ah = al_sub.add_parser("history", help="Show all alerts (acked + pending)")
+    ah.add_argument("--wallet", default=None)
+    ah.add_argument("--since", default=None, help="ISO 8601 timestamp")
+    ah.add_argument("--limit", type=int, default=100)
+    ah.set_defaults(_handler=cmd_alerts_history)
+
+    # audit -----------------------------------------------------------
+    au = sub.add_parser("audit", help="Audit log queries")
+    au_sub = au.add_subparsers(dest="subcmd", required=True)
+
+    aush = au_sub.add_parser("show", help="Read audit log entries (newest first)")
+    aush.add_argument("--since", default=None, help="ISO 8601 timestamp")
+    aush.add_argument("--limit", type=int, default=100)
+    aush.set_defaults(_handler=cmd_audit_show)
+
+    # watch -- still a stub until M4
+    wa = sub.add_parser("watch", help="watch commands (M4)")
+    wa.add_argument("rest", nargs=argparse.REMAINDER)
+    wa.set_defaults(_handler=cmd_stub, _stub_name="watch")
 
     return p
 

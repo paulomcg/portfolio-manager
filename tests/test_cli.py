@@ -20,15 +20,33 @@ FIXTURES = ROOT / "tests" / "fixtures"
 EXAMPLES = ROOT / "examples"
 
 
-def _run(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+def _run(
+    *args: str, stdin: str | None = None, extra_env: dict | None = None
+) -> subprocess.CompletedProcess:
+    env = {**os.environ, "PM_PYTHON": sys.executable}
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         [str(PM), *args],
         input=stdin,
         capture_output=True,
         text=True,
-        env={**os.environ, "PM_PYTHON": sys.executable},
+        env=env,
         timeout=15,
     )
+
+
+@pytest.fixture
+def isolated_state(tmp_path) -> dict[str, str]:
+    """Returns extra_env that points pm state at a temp dir for this test."""
+    s = tmp_path / "state"
+    s.mkdir()
+    return {
+        "PM_STATE_DIR": str(s),
+        "PM_SQLITE_PATH": str(s / "positions.sqlite"),
+        "PM_AUDIT_PATH": str(s / "audit.jsonl"),
+        "PM_ALERTS_LOG_PATH": str(s / "alerts.jsonl"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +230,105 @@ class TestRulesEvaluate:
 
 
 class TestStubs:
-    @pytest.mark.parametrize("name", ["position", "alerts", "audit", "watch"])
-    def test_stub_returns_not_implemented(self, name):
-        r = _run(name, "list")  # arbitrary subarg, captured by REMAINDER
+    def test_watch_still_stubbed(self):
+        # watch ships in M4; should still return not_implemented for now.
+        # Pass a positional so argparse's REMAINDER doesn't reject --flags.
+        r = _run("watch", "placeholder")
         assert r.returncode == 1
-        assert r.stderr.startswith(f"FAILED: not_implemented {name}")
+        assert r.stderr.startswith("FAILED: not_implemented watch")
+
+
+# ---------------------------------------------------------------------------
+# position commands (M3)
+# ---------------------------------------------------------------------------
+
+
+class TestPositionCommands:
+    def test_position_add_then_list(self, isolated_state):
+        r = _run(
+            "position", "add",
+            "--wallet", "w1",
+            "--asset", "WSOL",
+            "--qty", "30",
+            "--cost-usd", "3000",
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 0
+        out = json.loads(r.stdout)
+        assert out["ok"] is True
+        assert out["result"]["asset"] == "WSOL"
+        assert out["result"]["source"] == "manual"
+
+        r2 = _run("position", "list", "--wallet", "w1", extra_env=isolated_state)
+        out2 = json.loads(r2.stdout)
+        assert out2["result"]["manual_overrides"]["WSOL"]["qty"] == 30.0
+        assert out2["result"]["manual_overrides"]["WSOL"]["cost_basis_usd"] == 3000.0
+
+    def test_position_snapshot_persists_hwm(self, isolated_state):
+        r = _run(
+            "position", "snapshot",
+            "--wallet", "w1",
+            "--wallet-snapshot", str(FIXTURES / "wallet_snapshot.json"),
+            "--pnl-snapshot", str(FIXTURES / "pnl_snapshot.json"),
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 0
+        out = json.loads(r.stdout)
+        assert out["ok"] is True
+        positions = out["result"]["positions"]
+        wsol = next(p for p in positions if p["asset"] == "WSOL")
+        assert wsol["cost_basis_usd"] == 3000.0
+        assert wsol["avg_entry_price_usd"] == 100.0
+        # HWM persisted
+        r2 = _run("position", "list", "--wallet", "w1", extra_env=isolated_state)
+        out2 = json.loads(r2.stdout)
+        hwms = out2["result"]["high_water_marks"]
+        assert hwms["WSOL"] == 3900.0
+        assert hwms["<PORTFOLIO>"] == 5400.0
+
+    def test_position_snapshot_missing_wallet_snapshot_fails(self, isolated_state):
+        # Missing required arg → argparse returns exit 2; this is a usage error,
+        # not a controlled FAILED line.
+        r = _run("position", "snapshot", "--wallet", "w1", extra_env=isolated_state)
+        assert r.returncode != 0
+
+    def test_position_snapshot_bad_path(self, isolated_state, tmp_path):
+        r = _run(
+            "position", "snapshot",
+            "--wallet", "w1",
+            "--wallet-snapshot", str(tmp_path / "nope.json"),
+            extra_env=isolated_state,
+        )
+        assert r.returncode == 1
+        assert r.stderr.startswith("FAILED: positions_input_invalid file:")
+
+
+# ---------------------------------------------------------------------------
+# alerts + audit commands (M3)
+# ---------------------------------------------------------------------------
+
+
+class TestAlertsAndAudit:
+    def test_audit_show_after_position_add(self, isolated_state):
+        _run(
+            "position", "add",
+            "--wallet", "w1", "--asset", "WSOL", "--qty", "10", "--cost-usd", "1500",
+            extra_env=isolated_state,
+        )
+        r = _run("audit", "show", "--limit", "10", extra_env=isolated_state)
+        assert r.returncode == 0
+        out = json.loads(r.stdout)
+        assert out["result"]["count"] == 1
+        assert out["result"]["rows"][0]["event"] == "position.add"
+
+    def test_alerts_pending_empty_initially(self, isolated_state):
+        r = _run("alerts", "pending", extra_env=isolated_state)
+        assert r.returncode == 0
+        out = json.loads(r.stdout)
+        assert out["result"]["count"] == 0
+        assert out["result"]["alerts"] == []
+
+    def test_alerts_ack_unknown_returns_failed(self, isolated_state):
+        r = _run("alerts", "ack", "no-such-alert-id", extra_env=isolated_state)
+        assert r.returncode == 1
+        assert r.stderr.startswith("FAILED: alert_not_found")
