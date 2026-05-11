@@ -32,11 +32,13 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from scripts import alerts, audit, positions, report, rule_engine, schema, watch  # noqa: E402
+from scripts import strategy as strategy_mod  # noqa: E402
 from scripts.executor import (  # noqa: E402
     OnchainosSwapExecutor,
     SwapExecutor,
     SyntheticSwapExecutor,
 )
+from scripts.market_data import MarketDataSource  # noqa: E402
 from scripts.wallet_source import (  # noqa: E402
     OnchainosWalletSource,
     SyntheticWalletSource,
@@ -463,6 +465,28 @@ def cmd_watch(args: argparse.Namespace) -> int:
                 wallet_address=args.wallet, chain=args.chain
             )
 
+    # v0.2.0: optional strategy hook + market data source.
+    strategy_invoc = None
+    market_data = None
+    if args.strategy:
+        try:
+            strategy_invoc = strategy_mod.load(args.strategy)
+        except strategy_mod.StrategyError as e:
+            return _failed(str(e))
+        universe = rules_cfg.get("universe") or []
+        if universe and not args.no_market_data:
+            market_data = MarketDataSource(
+                universe=universe,
+                bar=args.bar,
+                lookback_bars=args.lookback_bars,
+            )
+            try:
+                market_data.start()
+            except Exception as e:  # noqa: BLE001
+                # Bootstrap failures are recorded; the strategy still runs
+                # against an empty history (its cold-start contract).
+                print(f"# market_data start warning: {e}", file=sys.stderr)
+
     try:
         summary = watch.run_monitor(
             rules_config=rules_cfg,
@@ -472,9 +496,17 @@ def cmd_watch(args: argparse.Namespace) -> int:
             iterations=args.iterations,
             executor=executor,
             max_loss_usd=args.max_loss_usd,
+            strategy=strategy_invoc,
+            market_data=market_data,
         )
     except Exception as e:  # noqa: BLE001
         return _failed(f"internal_error watch loop: {type(e).__name__}: {e}")
+    finally:
+        if market_data is not None:
+            try:
+                market_data.stop()
+            except Exception:  # noqa: BLE001
+                pass
     print(json.dumps({"ok": True, "result": summary}, default=str))
     return EXIT_OK
 
@@ -702,6 +734,30 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["onchainos", "synthetic"],
         default="onchainos",
         help="Swap executor for live mode (default: onchainos; use 'synthetic' for cap-enforcement demos / tests)",
+    )
+    # v0.2.0 strategy + market data flags
+    wa.add_argument(
+        "--strategy",
+        default=None,
+        help="Path to a Python file with `decide(state, market_data) -> list[Action]`. Optional.",
+    )
+    wa.add_argument(
+        "--bar",
+        default="1D",
+        help="Bar timeframe for the strategy's market data feed (default: 1D)",
+    )
+    wa.add_argument(
+        "--lookback-bars",
+        dest="lookback_bars",
+        type=int,
+        default=365,
+        help="How many historical bars to bootstrap per asset (default: 365)",
+    )
+    wa.add_argument(
+        "--no-market-data",
+        dest="no_market_data",
+        action="store_true",
+        help="Skip WS market data subscription even when --strategy is set",
     )
     wa.set_defaults(_handler=cmd_watch)
 

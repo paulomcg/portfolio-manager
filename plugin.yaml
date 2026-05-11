@@ -1,7 +1,7 @@
 schema_version: 1
 name: portfolio-manager
-version: "0.1.0"
-description: "Reactive wallet supervisor for OKX Agentic Wallet. Watches a wallet, derives positions from balances + per-token PnL, evaluates a YAML rule config (drawdown halts, position caps, trailing stops) on a schedule, emits structured alerts in monitor mode or executes exits via okx-dex-swap in live mode with a hard max-loss-usd kill switch. Trigger phrases: watch my portfolio, manage my positions, halt on drawdown, position cap, trailing stop, portfolio risk rules, max loss kill switch, alerts queue, ack alerts, audit log."
+version: "0.2.0"
+description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via an agent-authored decide() callback) AND the rules + supervision (when to exit via drawdown halts / position caps / trailing stops) AND the audit + reports. Polls a wallet, optionally streams real-time market data via okx-dex-ws, applies strategy actions and rule decisions through the existing okx-dex-swap executor with a hard max-loss-usd kill switch in live mode. `pm report` computes Sharpe / Sortino / Calmar / max-DD / win-rate / expectancy / CAGR from any audit log. Trigger phrases: trade strategy, agentic trader, decide when to buy, portfolio risk rules, drawdown halt, position cap, trailing stop, alerts queue, audit log, pm report, sharpe ratio, equity curve, max drawdown, max loss kill switch."
 author:
   name: "Paulo Goncalves"
   github: "paulomcg"
@@ -10,12 +10,17 @@ category: trading-strategy
 tags:
   - solana
   - onchainos
+  - trading-agent
+  - strategy
   - risk-management
   - position-management
   - trailing-stop
   - drawdown
   - alerts
   - audit
+  - reports
+  - sharpe
+  - backtesting-ready
 
 components:
   skill:

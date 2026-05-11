@@ -1,19 +1,39 @@
 # portfolio-manager
 
-**A reactive wallet supervisor for the OKX Agentic Wallet.** Watches your
-positions, evaluates a declarative YAML rule config (drawdown halts, position
-caps, trailing stops) on a schedule, and either alerts you (monitor mode) or
-auto-exits via `okx-dex-swap` (live mode, hard `--max-loss-usd` kill switch
-required every invocation).
+**A complete agentic trading agent for the OKX Agentic Wallet.** Owns the
+**strategy** (a Python `decide()` callback the agent authors — answers "when
+to open"), the **rules** (drawdown halts / position caps / trailing stops —
+answer "when to exit"), the **executor** (real swaps via `okx-dex-swap` OR a
+built-in synthetic engine), the **alerts queue**, the **append-only audit
+log**, and **`pm report`** (Sharpe / Sortino / max DD / win rate / equity
+chart from any audit).
 
-PM composes existing OKX Onchain OS skills — it does not replace them. You open
-positions freely. PM observes the resulting state and enforces rules reactively.
+The same `.py` strategy file works in live mode today and against historical
+data when the upcoming backtester ships. One artifact, two execution
+contexts. Without `--strategy`, PM falls back to v0.1.0's reactive
+supervisor behavior — opens stay external.
 
-> Status: v0.1.0 — submitted to the OKX Agentic Trading Contest (May 2026). MIT
-> licensed. Not investment advice. Trade at your own risk. Test in monitor mode
-> before going live.
+> Status: v0.2.0 — submitted to the OKX Agentic Trading Contest (May 2026).
+> MIT licensed. Not investment advice. Trade at your own risk. Test in
+> monitor mode before going live.
 
 ---
+
+## What's new in v0.2.0
+
+- **Strategy hook** — `pm watch --strategy <py>` loads an agent-authored
+  `decide(state, market_data) -> list[Action]` callback. Strategy actions
+  execute through the existing swap-executor abstraction (real or synthetic).
+- **Market data via `okx-dex-ws`** — bootstrap kline at startup, real-time
+  bar events via WebSocket per cycle, strategy receives `{current, history}`
+  per universe asset.
+- **`pm report`** — read any audit log and compute Sharpe / Sortino / Calmar
+  / max DD / win rate / expectancy / CAGR; emit `report.json` + `report.md`
+  + `equity.png` with drawdown shading.
+- **Buy action in the executor** — opens go through the same Fill schema as
+  exits, with `source: "strategy" | "rule"` attribution in the audit.
+- **Backwards-compatible**: omit `--strategy` and v0.1.0's 111 tests + every
+  existing flag behave byte-identical.
 
 ## What's in the box
 
@@ -34,9 +54,12 @@ positions freely. PM observes the resulting state and enforces rules reactively.
 - **Three consumption patterns**: live stdout tail, audit log poll
   (`audit.jsonl`), and an ack-able alerts queue
   (`pm alerts pending` / `pm alerts ack`).
-- **111 tests**, all green, exercising the rule engine, schema validation,
-  position derivation, HWM persistence, alerts queue, audit log, watch loops
-  (monitor + live), swap executors, and CLI integration.
+- **217 tests** (v0.1.0 + v0.2.0), all green, exercising the rule engine,
+  schema validation, position derivation, HWM persistence, alerts queue,
+  audit log, watch loops (monitor + live), swap executors (sells + buys),
+  CLI integration, strategy loader, helpers, market data (WS subscribe +
+  poll + reconnect), `pm report` (metrics + chart + Markdown), and the
+  strategy-in-cycle integration.
 
 ---
 
@@ -84,6 +107,48 @@ export OKX_API_KEY=... OKX_SECRET_KEY=... OKX_PASSPHRASE=...
 PM itself never reads those env vars — the underlying `onchainos` CLI does.
 
 ---
+
+## Authoring a strategy (v0.2.0)
+
+A strategy is a small Python file with one callable. The agent (Claude
+Code, Hermes, etc.) drafts it from the user's intent:
+
+```python
+# weekly_dca.py
+from pm.helpers import every_n_bars
+
+def decide(state, market_data):
+    if every_n_bars(state['cycle_index'], 7) and state['cash_usd'] > 100:
+        return [{'action': 'buy', 'asset': 'WSOL', 'amount_usd': 100.0}]
+    return []
+```
+
+Then point PM at it:
+
+```
+pm watch --config conservative-majors.yaml \
+         --strategy weekly_dca.py \
+         --wallet <addr> --bar 1D --lookback-bars 365
+```
+
+The same `.py` file is the artifact the upcoming backtester will drive
+against historical OHLCV — one file, two contexts.
+
+Three example strategies ship in `examples/strategies/`:
+- `buy_and_hold.py` — open once, hold forever (5 lines of `decide()`)
+- `weekly_dca.py` — buy a fixed USD amount every 7 cycles
+- `momentum_threshold.py` — enter when 20-bar return > 5%, exit on -5%
+
+## `pm report` quick-start
+
+```
+pm report --audit-path state/audit.jsonl --out ./report-may/
+```
+
+Reads your live audit log, computes Sharpe / Sortino / max DD / win rate /
+expectancy / CAGR, writes `report.{json,md}` + `equity.png` into the out
+dir. Works on any audit log conforming to the v1.0.0 schema documented in
+SKILL.md.
 
 ## 60-second demo (no wallet, no capital)
 

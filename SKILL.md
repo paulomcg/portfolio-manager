@@ -1,7 +1,7 @@
 ---
 name: portfolio-manager
-description: "Reactive wallet supervisor for OKX Agentic Wallet. Watches positions, evaluates risk rules (halt-on-drawdown, max-position-pct, trailing-stop), emits structured alerts in monitor mode or executes exits via okx-dex-swap in live mode with a hard max-loss-usd kill switch. Use when the user says: watch my portfolio, manage positions, set up risk rules, halt on drawdown, trailing stop, position cap, alerts queue, ack alerts, max loss kill switch, audit my trades."
-version: "0.1.0"
+description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via a Python decide() callback the agent authors), the rules + supervision (when to exit via drawdown halts / position caps / trailing stops), and the audit + reports (Sharpe, Sortino, max DD, win rate, equity chart via pm report). Use when the user says: build a trading strategy, decide when to buy, run my strategy live, run my strategy on history, watch my portfolio, manage positions, set up risk rules, drawdown halt, trailing stop, position cap, max loss kill switch, audit my trades, pm report, sharpe, equity curve."
+version: "0.2.0"
 license: MIT
 metadata:
   author: paulomcg
@@ -10,10 +10,20 @@ metadata:
 
 # Portfolio Manager
 
-A reactive supervisor that **observes** your wallet and **enforces** risk rules.
-It does **not** decide what to buy and does **not** wrap `okx-dex-swap` — the
-user (or the agent) opens positions freely; PM watches the resulting state and
-takes rule-driven action.
+A complete agentic trading agent: PM owns the **strategy** (a Python
+`decide()` callback the user / agent authors — answers "when to open?"),
+the **rules** (drawdown halts / position caps / trailing stops — answer
+"when to exit?"), the **executor** (composes existing `okx-dex-swap` for
+real swaps OR a built-in synthetic executor for paper / cap-demo runs),
+and the **audit + reports** (every decision logged; `pm report` produces
+Sharpe / Sortino / Calmar / max DD / win rate / equity chart from any
+audit log).
+
+The same `decide(state, market_data)` callback works in live mode
+(`pm watch --strategy ...`) and is the artifact a future backtester
+drives against historical data. **Without `--strategy`**, PM falls back to
+the v0.1.0 reactive supervisor (user opens positions externally, PM
+watches + enforces rules).
 
 ## Pre-flight (before the first `pm` command this session)
 
@@ -24,36 +34,89 @@ takes rule-driven action.
    - `onchainos wallet status` → must report `loggedIn: true`. If not, `onchainos wallet login <email>` first.
    - `OKX_API_KEY` / `OKX_SECRET_KEY` / `OKX_PASSPHRASE` are read from env by the underlying CLI. PM never reads, logs, or persists them.
 
-## Modes — pick one, default is monitor
+## Authoring a strategy (v0.2.0)
 
-### Monitor mode (default)
+A strategy is a small Python file with one callable:
 
-Reads wallet state, evaluates rules, emits structured alerts. **Never** calls a swap endpoint. Safe to demo without capital.
+```python
+# my-strategy.py
+def decide(state, market_data):
+    """
+    state: positions snapshot (same shape rules see). Includes
+      'cycle_index', 'cash_usd', 'total_equity_usd', 'positions': [...].
+    market_data: per-asset {'current': bar_dict, 'history': pd.DataFrame}
+      keyed by symbol; populated from a WS feed at startup + per cycle.
+
+    Returns: list of action dicts:
+      {'action': 'buy',  'asset': 'WSOL', 'amount_usd': 100.0}
+      {'action': 'buy',  'asset': 'WSOL', 'qty': 0.77}
+      {'action': 'sell', 'asset': 'WSOL', 'qty': 0.5}
+      {'action': 'sell', 'asset': 'WSOL', 'sell_all': True}
+      {'action': 'hold'}                                            # optional no-op
+    """
+    if state.get('cycle_index') == 0:
+        return [{'action': 'buy', 'asset': 'WSOL', 'amount_usd': 100.0}]
+    return []
+```
+
+PM ships small importable helpers in `pm.helpers` (also accessible via the
+local repo path):
+
+```python
+from pm.helpers import (
+    every_n_bars, calendar_aligned, rolling_return,
+    has_position, position_pct_of_equity, cash_pct_of_equity,
+)
+```
+
+Three reference strategies live in `examples/strategies/`:
+- `buy_and_hold.py`: open once on cycle 0, hold forever
+- `weekly_dca.py`: buy a fixed USD amount every 7 cycles
+- `momentum_threshold.py`: enter when 20-bar return clears +5%, exit on -5%
+
+Strategy errors are caught at the cycle level: a malformed action becomes
+a cycle warning, an exception in `decide()` becomes a cycle warning, the
+loop continues. Bad signature (e.g. `decide(x, y, z, w)`) fails loud at
+load time with a canonical `FAILED: strategy_invalid <reason>` line.
+
+## Modes
+
+### Reactive monitor mode (v0.1.0 — no strategy)
 
 ```
 pm watch --config <rules.yaml> --wallet <address> [--interval 60] [--iterations N]
 ```
 
-For no-keys / no-wallet demos use a synthetic state file:
+User opens positions externally; PM watches + enforces rules. **Never**
+calls a swap endpoint without `--live`.
 
-```
-pm watch --config examples/conservative-majors.yaml \
-         --positions-source examples/synthetic-wallet.json \
-         --interval 0 --iterations 3
-```
-
-### Live mode (explicit opt-in)
-
-Executes recommended exits via the `onchainos swap execute` CLI. **Both** `--live` and `--max-loss-usd` are required every invocation — there is no persisted "live mode on" state.
+### Active monitor mode (v0.2.0 — strategy, no executor)
 
 ```
 pm watch --config <rules.yaml> --wallet <address> \
-         --live --max-loss-usd <usd> [--interval 60] [--executor onchainos|synthetic]
+         --strategy my-strategy.py [--bar 1D] [--lookback-bars 365]
 ```
 
-The loop halts the instant cumulative realized loss across all swaps it executed exceeds `--max-loss-usd`. A conservative pre-check projects the worst-case loss of each individual swap and skips it (instead of executing it) if executing would push cumulative loss over the cap.
+Strategy fires each cycle with market data, but actions are recorded as
+audit-only warnings (no execution). Useful for dry-running a new strategy
+against a real wallet feed before going live.
 
-`--executor synthetic` runs the same code path with a fake swap engine — useful for testing or demoing the cap-enforcement behavior on a no-capital wallet.
+### Live mode (explicit opt-in — required for any execution)
+
+```
+pm watch --config <rules.yaml> --wallet <address> \
+         [--strategy my-strategy.py] \
+         --live --max-loss-usd <usd> [--executor onchainos|synthetic]
+```
+
+Strategy AND rule actions execute via the chosen executor:
+- `--executor onchainos` (default): real `onchainos swap execute` calls.
+- `--executor synthetic`: built-in simulator with `slippage_bps + fee_bps`
+  applied — used for tests, cap-enforcement demos, and offline runs.
+
+The cap halts the loop the instant cumulative realized loss crosses
+`--max-loss-usd`. A conservative pre-check projects worst-case loss per
+swap and skips swaps that would breach the cap rather than execute them.
 
 ## Three consumption patterns — agent picks one
 
@@ -171,6 +234,73 @@ Output:
 }
 ```
 
+## Reports (`pm report` — v0.2.0)
+
+Compute risk-adjusted metrics from any PM audit log. Works on live audits
+that PM has been writing for weeks, on a single backtest run's audit, or
+any subset filtered by wallet + time range.
+
+```
+pm report
+    [--audit-path <jsonl>]            # default: state/audit.jsonl
+    [--wallet <addr>] [--since <iso>] [--until <iso>]
+    [--title "<chart title>"]
+    --out <dir>                       # required
+```
+
+Reads `watch.cycle` rows, reconstructs the equity time series from
+`positions.total_equity_usd` per cycle, computes:
+
+- Total return / CAGR
+- Sharpe / Sortino / Calmar (auto-annualized from inferred bar cadence)
+- Max drawdown (with peak + trough timestamps)
+- Win rate / expectancy / avg trade duration from `fills[].realized_pnl_usd`
+- Per-asset realized PnL
+
+Emits three files into `--out`:
+- `report.json` — stable v1.0.0 schema, deterministic given the same audit
+- `report.md` — human-readable Markdown summary with embedded chart
+- `equity.png` — matplotlib equity curve with drawdown shading
+
+### Audit row schema (v1.0.0 — stable contract)
+
+The audit log PM has written since v0.1.0 is the integration surface for
+`pm report` and any downstream consumer (including the future backtester).
+Each watch-cycle row:
+
+```json
+{
+  "ts_utc": "2026-05-11T14:30:22+00:00",
+  "event": "watch.cycle",
+  "cycle_id": "...",
+  "cycle_index": 0,
+  "mode": "monitor" | "live",
+  "wallet": "<addr>",
+  "positions": {
+    "total_equity_usd": 1000.0,
+    "high_water_mark_usd": 1000.0,
+    "drawdown_from_hwm_pct": 0.0,
+    "n_positions": 0,
+    "warnings": []
+  },
+  "decisions": [ ... ],          // rule-driven decisions
+  "strategy": {                  // v0.2.0 only when --strategy
+    "actions": [ ... ],
+    "warnings": [ ... ]
+  },
+  "fills": [
+    {"ok": true, "action": "buy|sell|trim|exit|halt",
+     "asset": "...", "qty_swapped": ..., "fill_price_usd": ...,
+     "gross_proceeds_usd": ..., "fees_usd": ..., "slippage_usd": ...,
+     "realized_pnl_usd": ..., "tx_hash": ..., "executor": "...",
+     "source": "strategy" | "rule"}                  // v0.2.0 attribution
+  ],
+  "alerts_emitted": [...],
+  "errors": [...],
+  "diagnostics": {...}
+}
+```
+
 ## Failure vocabulary (canonical FAILED lines)
 
 PM prints `FAILED: <token> <detail>` to stderr and exits 1. The token is stable across versions; the detail is human-readable and free-form.
@@ -189,6 +319,9 @@ PM prints `FAILED: <token> <detail>` to stderr and exits 1. The token is stable 
 | Alert id not found | `alert_not_found` |
 | Wallet address required for the current command | `wallet_required` |
 | Catch-all for unexpected exceptions | `internal_error` |
+| Strategy file invalid (missing decide, bad signature, import error) | `strategy_invalid` |
+| Report invocation invalid (missing --out, etc.) | `report_invalid` |
+| Report computation crashed | `report_failed` |
 
 `OK:` is the success counterpart; format depends on the command (see each section above).
 
