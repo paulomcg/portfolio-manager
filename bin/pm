@@ -23,7 +23,11 @@ if [ -z "$py" ] || [ ! -x "$py" ]; then
   exit 1
 fi
 
-# Make `python -m scripts.pm` work no matter where the user `cd`'d to.
+# Make `python -m scripts.pm` work no matter where the caller `cd`'d to.
+# `cd "$root"` makes Python's implicit sys.path[0]='' resolve to PM's repo,
+# which prevents some other directory's `scripts/` package from shadowing
+# ours when this launcher is invoked from inside a sibling project.
 export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
+cd "$root"
 
 exec "$py" -m scripts.pm "$@"
