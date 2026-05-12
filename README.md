@@ -30,6 +30,11 @@ supervisor behavior — opens stay external.
 - **`pm report`** — read any audit log and compute Sharpe / Sortino / Calmar
   / max DD / win rate / expectancy / CAGR; emit `report.json` + `report.md`
   + `equity.png` with drawdown shading.
+- **`pm dashboard`** — local read-only web UI for live observability.
+  Single-page Chart.js + vanilla JS; SSE push-updates as PM writes audit
+  rows. 6 JSON endpoints (`/api/snapshot`, `/api/equity`, `/api/metrics`,
+  `/api/audit`, `/api/alerts/pending`, `/api/state`) for programmatic
+  consumers. Stdlib-only — no extra deps.
 - **Buy action in the executor** — opens go through the same Fill schema as
   exits, with `source: "strategy" | "rule"` attribution in the audit.
 - **Backwards-compatible**: omit `--strategy` and v0.1.0's 111 tests + every
@@ -54,12 +59,13 @@ supervisor behavior — opens stay external.
 - **Three consumption patterns**: live stdout tail, audit log poll
   (`audit.jsonl`), and an ack-able alerts queue
   (`pm alerts pending` / `pm alerts ack`).
-- **217 tests** (v0.1.0 + v0.2.0), all green, exercising the rule engine,
+- **239 tests** (v0.1.0 + v0.2.0), all green, exercising the rule engine,
   schema validation, position derivation, HWM persistence, alerts queue,
   audit log, watch loops (monitor + live), swap executors (sells + buys),
   CLI integration, strategy loader, helpers, market data (WS subscribe +
-  poll + reconnect), `pm report` (metrics + chart + Markdown), and the
-  strategy-in-cycle integration.
+  poll + reconnect), `pm report` (metrics + chart + Markdown),
+  `pm dashboard` (API endpoints + server integration tests on a real
+  ThreadingHTTPServer instance), and the strategy-in-cycle integration.
 
 ---
 
@@ -107,6 +113,54 @@ export OKX_API_KEY=... OKX_SECRET_KEY=... OKX_PASSPHRASE=...
 PM itself never reads those env vars — the underlying `onchainos` CLI does.
 
 ---
+
+## Observability dashboard (v0.2.0)
+
+A read-only local web UI for live observability:
+
+```
+pm dashboard --host 127.0.0.1 --port 7777
+# open http://127.0.0.1:7777
+```
+
+```
++----------------------------------------------------------------+
+| ● portfolio-manager  v0.2.0      wallet: bt-1 · 14:32:08 UTC   |
++----------------------------------------------------------------+
+| Equity   | DD       | Return  | Sharpe | Cycles | Mode         |
+| $1,176   | 2.13%    | +17.96% | 8.89   | 20     | backtest     |
++----------------------------------------------------------------+
+|  ── equity curve ─────────────────────────────────────────────  |
+|                                              ╱╲                |
+|                                         ╱╲╱╲╱  ╲╲              |
+|                                    ╱╲╱╲╱        ╲╱             |
+|                              ╱╲╱╲╱                             |
+|                         ╱╲╱╲╱                                  |
+|                    ╱╲╱╲╱                                       |
++----------------------------------------------------------------+
+| Positions                       | Pending alerts                |
+| ────────────────────────────    | ────────────────────────────  |
+| WSOL: 9.3 @ $133 ($1238)        | per-position-cap [warn]       |
+| USDC: $0                        | trim WSOL — exceeds 60% cap   |
+|                                 | trailing-stop [warn] ...      |
++----------------------------------------------------------------+
+| Recent activity (last 50)                                      |
+| 2025-01-20 04:00:00  watch.cycle  bt-1  0s / 1r  1  $1176     |
+| 2025-01-19 04:00:00  watch.cycle  bt-1  0s / 0r  0  $1098     |
+| 2025-01-18 04:00:00  watch.cycle  bt-1  0s / 1r  1  $1108     |
+| ...                                                            |
++----------------------------------------------------------------+
+```
+
+Updates push via Server-Sent Events as PM writes new audit rows or
+alerts. The whole UI is served by stdlib `http.server` — no extra
+dependencies, no build step, ~250 lines of vanilla JS. JSON endpoints
+underneath (`/api/snapshot`, `/api/equity`, `/api/metrics`, etc.) are
+documented in SKILL.md and consumable by any agent that wants programmatic
+access to PM's state.
+
+**Read-only by design.** No buttons fire swaps; the dashboard never
+mutates state. All write paths stay in the CLI.
 
 ## Authoring a strategy (v0.2.0)
 

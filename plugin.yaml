@@ -1,7 +1,7 @@
 schema_version: 1
 name: portfolio-manager
 version: "0.2.0"
-description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via an agent-authored decide() callback) AND the rules + supervision (when to exit via drawdown halts / position caps / trailing stops) AND the audit + reports. Polls a wallet, optionally streams real-time market data via okx-dex-ws, applies strategy actions and rule decisions through the existing okx-dex-swap executor with a hard max-loss-usd kill switch in live mode. `pm report` computes Sharpe / Sortino / Calmar / max-DD / win-rate / expectancy / CAGR from any audit log. Trigger phrases: trade strategy, agentic trader, decide when to buy, portfolio risk rules, drawdown halt, position cap, trailing stop, alerts queue, audit log, pm report, sharpe ratio, equity curve, max drawdown, max loss kill switch."
+description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via an agent-authored decide() callback) AND the rules + supervision (when to exit via drawdown halts / position caps / trailing stops) AND the audit + reports AND a read-only local web dashboard for observability. Polls a wallet, optionally streams real-time market data via okx-dex-ws, applies strategy actions and rule decisions through the existing okx-dex-swap executor with a hard max-loss-usd kill switch in live mode. `pm report` computes Sharpe / Sortino / Calmar / max-DD / win-rate / expectancy / CAGR from any audit log. `pm dashboard` opens a local browser UI with live SSE updates showing positions, equity curve, pending alerts, recent activity. Trigger phrases: trade strategy, agentic trader, decide when to buy, portfolio risk rules, drawdown halt, position cap, trailing stop, alerts queue, audit log, pm report, pm dashboard, observability, equity curve, max drawdown, sharpe ratio, max loss kill switch."
 author:
   name: "Paulo Goncalves"
   github: "paulomcg"
@@ -19,6 +19,8 @@ tags:
   - alerts
   - audit
   - reports
+  - dashboard
+  - observability
   - sharpe
   - backtesting-ready
 

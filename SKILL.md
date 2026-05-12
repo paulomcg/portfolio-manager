@@ -234,6 +234,51 @@ Output:
 }
 ```
 
+## Observability dashboard (`pm dashboard` — v0.2.0)
+
+Start a local web UI that surfaces PM's state in real time:
+
+```
+pm dashboard [--host 127.0.0.1] [--port 7777]
+```
+
+Opens an HTTP server bound to localhost; navigate to
+`http://127.0.0.1:7777` in any browser. The dashboard is **read-only by
+design** — no buttons mutate state, no swaps fire from a browser tab. All
+write paths stay in the CLI (`pm position add`, `pm alerts ack`, etc.).
+
+What you see:
+- Six metric cards: total equity, drawdown from HWM, return, Sharpe,
+  cycle count, current mode (monitor / live / backtest).
+- Equity curve (Chart.js) computed live from the audit log.
+- Positions table (asset, qty, mark, value, cost basis, unrealized PnL,
+  per-position drawdown).
+- Pending alerts panel (rule id, severity, reason, age, alert id).
+- Recent activity table (last 50 audit rows newest-first: timestamp,
+  event, wallet, strategy/rule counts, fill count, equity at close).
+
+Updates flow via Server-Sent Events: the server watches `audit.jsonl` +
+`alerts.jsonl` mtimes and pushes `cycle` / `alert` events as soon as PM
+writes a new row. The frontend re-fetches `/api/snapshot` on each event.
+A 10s polling fallback covers the case where SSE drops.
+
+Underlying JSON endpoints (also usable by other agents / tooling):
+
+```
+GET /api/state                          # most recent watch.cycle + sqlite overrides
+GET /api/audit?limit=50&since=<iso>
+GET /api/alerts/pending?severity=critical
+GET /api/equity                         # equity series + drawdown_pct
+GET /api/metrics                        # full pm report metrics
+GET /api/snapshot                       # combined payload (state + audit + alerts + metrics)
+GET /events                             # SSE stream
+```
+
+All endpoints share the v1.0.0 schema documented above. The dashboard is
+just a UI layer over them — anything you can do in the browser is also
+available as raw JSON for an agent that wants to consume PM observability
+programmatically.
+
 ## Reports (`pm report` — v0.2.0)
 
 Compute risk-adjusted metrics from any PM audit log. Works on live audits
@@ -322,6 +367,7 @@ PM prints `FAILED: <token> <detail>` to stderr and exits 1. The token is stable 
 | Strategy file invalid (missing decide, bad signature, import error) | `strategy_invalid` |
 | Report invocation invalid (missing --out, etc.) | `report_invalid` |
 | Report computation crashed | `report_failed` |
+| Dashboard port already in use | `dashboard_port_in_use` |
 
 `OK:` is the success counterpart; format depends on the command (see each section above).
 
