@@ -32,6 +32,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from scripts import alerts, audit, positions, report, rule_engine, schema, watch  # noqa: E402
+from scripts.dashboard import server as dashboard_server  # noqa: E402
 from scripts import strategy as strategy_mod  # noqa: E402
 from scripts.executor import (  # noqa: E402
     OnchainosSwapExecutor,
@@ -523,6 +524,21 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Dashboard command (M21 / v0.2.0)
+# ---------------------------------------------------------------------------
+
+
+@_wrap
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """Start the local read-only observability dashboard."""
+    try:
+        dashboard_server.serve_forever(host=args.host, port=args.port)
+    except OSError as e:
+        return _failed(f"dashboard_port_in_use {e}")
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
 # Report command (M9 / v0.2.0)
 # ---------------------------------------------------------------------------
 
@@ -694,6 +710,15 @@ def build_parser() -> argparse.ArgumentParser:
     aush.add_argument("--since", default=None, help="ISO 8601 timestamp")
     aush.add_argument("--limit", type=int, default=100)
     aush.set_defaults(_handler=cmd_audit_show)
+
+    # dashboard -------------------------------------------------------
+    db = sub.add_parser(
+        "dashboard",
+        help="Start the local read-only observability web dashboard",
+    )
+    db.add_argument("--host", default="127.0.0.1", help="Bind host (default: localhost)")
+    db.add_argument("--port", type=int, default=7777, help="Bind port (default: 7777)")
+    db.set_defaults(_handler=cmd_dashboard)
 
     # report ----------------------------------------------------------
     rp = sub.add_parser(

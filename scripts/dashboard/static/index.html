@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>portfolio-manager — observability</title>
+<link rel="stylesheet" href="/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="dot" id="conn-dot" title="live"></span>
+    <h1>portfolio-manager</h1>
+    <span class="version">v0.2.0</span>
+  </div>
+  <div class="meta">
+    <span id="wallet-label">wallet: —</span>
+    <span class="sep">·</span>
+    <span id="updated-label">last update: —</span>
+  </div>
+</header>
+
+<main>
+  <section class="cards">
+    <div class="card">
+      <div class="card-label">Total equity</div>
+      <div class="card-value" id="metric-equity">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Drawdown from HWM</div>
+      <div class="card-value" id="metric-dd">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Return</div>
+      <div class="card-value" id="metric-return">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Sharpe</div>
+      <div class="card-value" id="metric-sharpe">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Cycles</div>
+      <div class="card-value" id="metric-cycles">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Mode</div>
+      <div class="card-value" id="metric-mode">—</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Equity curve</h2>
+    <canvas id="equity-chart" height="120"></canvas>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>Positions</h2>
+      <table id="positions-table">
+        <thead>
+          <tr>
+            <th>Asset</th><th>Qty</th><th>Mark</th><th>Value</th>
+            <th>Cost basis</th><th>Unreal. PnL</th><th>HWM DD</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="7" class="empty">no positions yet</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Pending alerts <span class="pill" id="alerts-count">0</span></h2>
+      <ul id="alerts-list">
+        <li class="empty">no pending alerts</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Recent activity</h2>
+    <table id="audit-table">
+      <thead>
+        <tr><th>Timestamp</th><th>Event</th><th>Wallet</th><th>Strategy / Rule</th><th>Fills</th><th>Equity</th></tr>
+      </thead>
+      <tbody><tr><td colspan="6" class="empty">no audit rows yet</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<footer>
+  <span>read-only · localhost · SSE updates</span>
+  <span><a href="/api/snapshot" target="_blank">/api/snapshot</a></span>
+</footer>
+</body>
+</html>
