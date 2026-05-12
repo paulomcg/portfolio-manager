@@ -583,7 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
             "okx-dex-swap) with a stateless rule engine."
         ),
     )
-    p.add_argument("--version", action="version", version="pm 0.1.0")
+    p.add_argument("--version", action="version", version="pm 0.2.0")
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
