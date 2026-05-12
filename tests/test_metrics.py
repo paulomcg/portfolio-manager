@@ -168,3 +168,10 @@ class TestInferPeriodsPerYear:
 
     def test_empty_falls_back_to_default(self):
         assert metrics.infer_periods_per_year(pd.DatetimeIndex([])) == 365
+
+    def test_clamped_at_1m_resolution(self):
+        # Sub-second deltas → would overflow without clamp.
+        idx = pd.DatetimeIndex(pd.date_range(
+            "2026-01-01", periods=3, freq="ms"
+        ))
+        assert metrics.infer_periods_per_year(idx) == 525_600

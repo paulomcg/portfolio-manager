@@ -167,7 +167,9 @@ def per_asset_pnl(fills: list[dict[str, Any]]) -> dict[str, float]:
 def infer_periods_per_year(ts_index: pd.Series | pd.DatetimeIndex) -> int:
     """Estimate the natural bars-per-year from the median bar interval.
 
-    Helps `pm report` annualize Sharpe/Sortino without a flag.
+    Helps `pm report` annualize Sharpe/Sortino without a flag. Clamped to
+    [1, 525_600] (1m bars = 525,600/year) so smoke tests / sub-second
+    timestamps don't produce nonsense annualization factors.
     """
     if len(ts_index) < 2:
         return PERIODS_PER_YEAR_DEFAULT
@@ -182,4 +184,6 @@ def infer_periods_per_year(ts_index: pd.Series | pd.DatetimeIndex) -> int:
     if seconds <= 0:
         return PERIODS_PER_YEAR_DEFAULT
     seconds_per_year = 365 * 24 * 3600
-    return max(1, int(round(seconds_per_year / seconds)))
+    raw = int(round(seconds_per_year / seconds))
+    # Clamp to [1, 1m bars] — anything finer is implausible for a live PM cycle.
+    return max(1, min(525_600, raw))

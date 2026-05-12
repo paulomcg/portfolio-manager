@@ -30,6 +30,62 @@ log = logging.getLogger(__name__)
 _CANDLE_CHANNEL = "dex-token-candle{bar}"
 
 
+class StaticMarketData:
+    """Pre-built market_data snapshot — no I/O. Used by backtests where
+    the driver writes a JSON file per cycle and PM reads it (parallel to
+    --positions-source / --pnl-source). Implements the same interface
+    MarketDataSource exposes (poll/snapshot/stop)."""
+
+    def __init__(self, snapshot: dict[str, dict[str, Any]]):
+        self._snapshot = snapshot
+
+    def poll(self) -> list[dict[str, Any]]:
+        return []
+
+    def snapshot(self) -> dict[str, dict[str, Any]]:
+        return self._snapshot
+
+    def stop(self) -> list[dict[str, Any]]:
+        return []
+
+
+def load_static_snapshot(path: Any) -> StaticMarketData:
+    """Read a JSON file matching the shape strategies receive and wrap it."""
+    from pathlib import Path
+
+    p = Path(path)
+    if not p.exists():
+        raise MarketDataError(f"market_data_input_invalid file not found: {p}")
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise MarketDataError(
+            "market_data_input_invalid top-level must be {symbol: {current, history}}"
+        )
+    snap: dict[str, dict[str, Any]] = {}
+    for sym, payload in raw.items():
+        current = payload.get("current") if isinstance(payload, dict) else None
+        history_raw = payload.get("history") if isinstance(payload, dict) else None
+        history_df: pd.DataFrame
+        if isinstance(history_raw, list):
+            if history_raw:
+                history_df = pd.DataFrame(history_raw)
+                if "ts" in history_df.columns:
+                    idx = pd.to_datetime(history_df["ts"], utc=True, errors="coerce")
+                    history_df = history_df.loc[idx.notna()].copy()
+                    history_df.index = idx.dropna()
+                    history_df.index.name = None
+            else:
+                history_df = pd.DataFrame(
+                    columns=["ts", "o", "h", "l", "c", "vol", "volUsd"]
+                )
+        else:
+            history_df = pd.DataFrame(
+                columns=["ts", "o", "h", "l", "c", "vol", "volUsd"]
+            )
+        snap[sym] = {"current": current, "history": history_df}
+    return StaticMarketData(snap)
+
+
 class MarketDataError(Exception):
     """Token after the colon maps to a canonical FAILED line, e.g.
     'market_data_bootstrap_failed', 'market_data_subscribe_failed'."""

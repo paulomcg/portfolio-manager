@@ -38,7 +38,12 @@ from scripts.executor import (  # noqa: E402
     SwapExecutor,
     SyntheticSwapExecutor,
 )
-from scripts.market_data import MarketDataSource  # noqa: E402
+from scripts.market_data import (  # noqa: E402
+    MarketDataError,
+    MarketDataSource,
+    StaticMarketData,
+    load_static_snapshot,
+)
 from scripts.wallet_source import (  # noqa: E402
     OnchainosWalletSource,
     SyntheticWalletSource,
@@ -473,10 +478,16 @@ def cmd_watch(args: argparse.Namespace) -> int:
             strategy_invoc = strategy_mod.load(args.strategy)
         except strategy_mod.StrategyError as e:
             return _failed(str(e))
-        universe = rules_cfg.get("universe") or []
-        if universe and not args.no_market_data:
+        if args.market_data_source:
+            # Static / file-backed snapshot — used by the backtester. Mirrors
+            # the existing --positions-source / --pnl-source pattern.
+            try:
+                market_data = load_static_snapshot(args.market_data_source)
+            except MarketDataError as e:
+                return _failed(str(e))
+        elif rules_cfg.get("universe") and not args.no_market_data:
             market_data = MarketDataSource(
-                universe=universe,
+                universe=rules_cfg["universe"],
                 bar=args.bar,
                 lookback_bars=args.lookback_bars,
             )
@@ -758,6 +769,16 @@ def build_parser() -> argparse.ArgumentParser:
         dest="no_market_data",
         action="store_true",
         help="Skip WS market data subscription even when --strategy is set",
+    )
+    wa.add_argument(
+        "--market-data-source",
+        dest="market_data_source",
+        default=None,
+        help=(
+            "Path to a static market-data JSON file shaped as "
+            "{symbol: {current: <bar>, history: [<bars>...]}}. Bypasses WS — "
+            "used by the backtester to feed PM offline."
+        ),
     )
     wa.set_defaults(_handler=cmd_watch)
 
