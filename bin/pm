@@ -23,4 +23,7 @@ if [ -z "$py" ] || [ ! -x "$py" ]; then
   exit 1
 fi
 
+# Make `python -m scripts.pm` work no matter where the user `cd`'d to.
+export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
+
 exec "$py" -m scripts.pm "$@"
