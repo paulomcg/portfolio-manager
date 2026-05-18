@@ -75,6 +75,10 @@ def _route_snapshot(query: dict[str, str]) -> dict[str, Any]:
     )
 
 
+def _route_safety(query: dict[str, str]) -> dict[str, Any]:
+    return api.get_safety(wallet=query.get("wallet"))
+
+
 JSON_ROUTES: dict[str, Callable[[dict[str, str]], dict[str, Any]]] = {
     "/api/state": _route_state,
     "/api/audit": _route_audit,
@@ -82,6 +86,7 @@ JSON_ROUTES: dict[str, Callable[[dict[str, str]], dict[str, Any]]] = {
     "/api/equity": _route_equity,
     "/api/metrics": _route_metrics,
     "/api/snapshot": _route_snapshot,
+    "/api/safety": _route_safety,
 }
 
 

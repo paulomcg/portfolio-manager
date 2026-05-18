@@ -165,6 +165,88 @@ def get_metrics(
 
 
 # ---------------------------------------------------------------------------
+# /api/safety — kill-switch budget + active rules, derived from watch.start + audit
+# ---------------------------------------------------------------------------
+
+
+def get_safety(*, wallet: str | None = None) -> dict[str, Any]:
+    """Combine the most recent watch.start metadata with running realized loss
+    so the dashboard can render the kill-switch + active-rules panels.
+
+    Loss is summed from realized_pnl_usd < 0 across all fills since the most
+    recent watch.start (or all history if none found).
+    """
+    raw = audit.read(limit=None)  # newest first
+
+    start_row: dict[str, Any] | None = None
+    for r in raw:
+        if r.get("event") != "watch.start":
+            continue
+        if wallet is not None and r.get("wallet") != wallet:
+            continue
+        start_row = r
+        break
+
+    start_ts = start_row.get("ts_utc") if start_row else None
+    max_loss_usd = float(start_row.get("max_loss_usd") or 0) if start_row else 0.0
+
+    realized_loss = 0.0
+    realized_gain = 0.0
+    fills_count = 0
+    for r in raw:
+        if r.get("event") != "watch.cycle":
+            continue
+        if wallet is not None and r.get("wallet") != wallet:
+            continue
+        if start_ts and (r.get("ts_utc") or "") < start_ts:
+            continue
+        for f in r.get("fills") or []:
+            if f.get("ok") is False:
+                continue
+            try:
+                rpnl = float(f.get("realized_pnl_usd") or 0)
+            except (TypeError, ValueError):
+                continue
+            fills_count += 1
+            if rpnl < 0:
+                realized_loss += -rpnl
+            elif rpnl > 0:
+                realized_gain += rpnl
+
+    pct_consumed = (realized_loss / max_loss_usd * 100.0) if max_loss_usd > 0 else 0.0
+    if pct_consumed >= 100:
+        status = "halted"
+    elif pct_consumed >= 80:
+        status = "critical"
+    elif pct_consumed >= 50:
+        status = "warning"
+    else:
+        status = "ok"
+
+    return {
+        "ok": True,
+        "schema_version": API_SCHEMA_VERSION,
+        "served_at_utc": _now_iso(),
+        "wallet": wallet,
+        "kill_switch": {
+            "active": start_row is not None and start_row.get("mode") == "live",
+            "max_loss_usd": max_loss_usd,
+            "realized_loss_usd": round(realized_loss, 4),
+            "realized_gain_usd": round(realized_gain, 4),
+            "net_realized_usd": round(realized_gain - realized_loss, 4),
+            "percent_consumed": round(pct_consumed, 2),
+            "status": status,
+            "fills_since_start": fills_count,
+            "started_at_utc": start_ts,
+        },
+        "rules": (start_row.get("rules") or []) if start_row else [],
+        "universe": (start_row.get("universe") or []) if start_row else [],
+        "mode": start_row.get("mode") if start_row else None,
+        "strategy_loaded": bool(start_row.get("strategy_loaded")) if start_row else False,
+    }
+
+
+# ---------------------------------------------------------------------------
 # /api/snapshot — combined state + recent audit + alerts (for one-shot page load)
 # ---------------------------------------------------------------------------
 
@@ -179,4 +261,5 @@ def get_snapshot(*, wallet: str | None = None, audit_limit: int = 30) -> dict[st
         "audit": get_audit(limit=audit_limit, wallet=wallet),
         "alerts_pending": get_alerts_pending(wallet=wallet),
         "metrics": get_metrics(wallet=wallet),
+        "safety": get_safety(wallet=wallet),
     }

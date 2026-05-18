@@ -77,6 +77,18 @@ def run_monitor(
         interrupted = True
 
     prev_sigint = signal.signal(signal.SIGINT, _on_sigint)
+    audit.append({
+        "event": "watch.start",
+        "ts_utc": _now(),
+        "mode": mode,
+        "wallet": wallet_address,
+        "max_loss_usd": max_loss_usd,
+        "rules": rules_config.get("rules", []),
+        "universe": rules_config.get("universe", []),
+        "strategy_loaded": strategy is not None,
+        "interval_seconds": interval_seconds,
+        "iterations_cap": iterations,
+    })
     try:
         while not interrupted:
             if iterations is not None and cycles >= iterations:

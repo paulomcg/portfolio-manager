@@ -1,0 +1,28 @@
+import path from 'node:path'
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    target: 'es2022',
+    outDir: '../scripts/dashboard/static',
+    emptyOutDir: true,
+    assetsDir: 'assets',
+  },
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:7777',
+      '/events': {
+        target: 'http://127.0.0.1:7777',
+        changeOrigin: true,
+      },
+    },
+  },
+})
