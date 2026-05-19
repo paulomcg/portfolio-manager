@@ -95,7 +95,9 @@ class OnchainosWalletSource(WalletSource):
     def fetch(self) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
         balances = self._call_json(
             [self.cli_bin, "portfolio", "all-balances",
-             "--chain", self.chain, "--address", self.wallet_address]
+             "--chain", self.chain,
+             "--chains", self.chain,
+             "--address", self.wallet_address]
         )
         wallet = self._adapt_balances(balances)
         pnl = self._fetch_pnl_for_tokens(wallet["tokens"])
@@ -126,17 +128,25 @@ class OnchainosWalletSource(WalletSource):
     def _adapt_balances(self, balances: Any) -> dict[str, Any]:
         """Map onchainos `portfolio all-balances` output to WalletSnapshot.
 
-        The exact response shape is determined by the CLI; this adapter
-        targets a permissive interpretation and will be fine-tuned after
-        the first live call. We expect either {"data": [...]} or [...].
+        Current CLI shape: `{"data": [{"tokenAssets": [<row>, ...]}, ...]}`.
+        Older / alternative shapes (`{"data": [<row>]}`, `[<row>]`) still parsed.
+        Per-row keys: `symbol`, `tokenContractAddress` (new) / `tokenAddress` (old),
+        `balance`, `tokenPrice`. No USD value in the new shape — we compute
+        qty * price ourselves.
         """
-        rows = balances.get("data") if isinstance(balances, dict) else balances
-        if rows is None:
-            rows = []
+        rows = self._extract_token_rows(balances)
         tokens: list[dict[str, Any]] = []
         for row in rows:
             sym = row.get("symbol") or row.get("tokenSymbol") or row.get("asset")
-            addr = row.get("tokenAddress") or row.get("address") or row.get("contractAddress")
+            # IMPORTANT: in the new CLI shape `address` is the *wallet* address
+            # repeated on every row. The token contract lives in
+            # `tokenContractAddress`. Prefer that, fall back to old keys.
+            addr = (
+                row.get("tokenContractAddress")
+                or row.get("tokenAddress")
+                or row.get("contractAddress")
+                or ""
+            )
             qty = float(row.get("balance") or row.get("amount") or row.get("tokenAmount") or 0)
             price = float(row.get("tokenPrice") or row.get("price") or row.get("priceUsd") or 0)
             value = float(row.get("balanceUsd") or row.get("valueUsd") or row.get("usdValue") or qty * price)
@@ -144,7 +154,7 @@ class OnchainosWalletSource(WalletSource):
                 {
                     "asset": sym or "?",
                     "chain": self.chain,
-                    "address": addr or "",
+                    "address": addr,
                     "qty": qty,
                     "mark_price_usd": price,
                     "value_usd": value,
@@ -155,6 +165,30 @@ class OnchainosWalletSource(WalletSource):
             "ts_utc": datetime.now(timezone.utc).isoformat(),
             "tokens": tokens,
         }
+
+    @staticmethod
+    def _extract_token_rows(balances: Any) -> list[dict[str, Any]]:
+        """Pull a flat list of token rows out of any of the historical shapes:
+        - Current:   {"data": [{"tokenAssets": [<row>, ...]}, ...]}
+        - Legacy:    {"data": [<row>, ...]}
+        - Bare list: [<row>, ...]
+        """
+        data = balances.get("data") if isinstance(balances, dict) else balances
+        if data is None:
+            return []
+        if not isinstance(data, list):
+            return []
+        # Detect the nested-container shape: any element with `tokenAssets`.
+        nested = [el for el in data if isinstance(el, dict) and "tokenAssets" in el]
+        if nested:
+            out: list[dict[str, Any]] = []
+            for el in nested:
+                rows = el.get("tokenAssets")
+                if isinstance(rows, list):
+                    out.extend(r for r in rows if isinstance(r, dict))
+            return out
+        # Fallback: treat each top-level element as a token row.
+        return [r for r in data if isinstance(r, dict)]
 
     def _fetch_pnl_for_tokens(self, tokens: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}

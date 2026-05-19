@@ -209,7 +209,9 @@ def _run_one_cycle(
             "total_equity_usd": derived["total_equity_usd"],
             "high_water_mark_usd": derived["high_water_mark_usd"],
             "drawdown_from_hwm_pct": derived["drawdown_from_hwm_pct"],
+            "cash_usd": derived.get("cash_usd"),
             "n_positions": len(derived["positions"]),
+            "positions": derived["positions"],
             "warnings": derived.get("warnings", []),
         }
         cycle_record["fills"] = []
@@ -229,9 +231,11 @@ def _run_one_cycle(
                 realized_loss_running=realized_loss_running,
                 max_loss_usd=max_loss_usd,
             )
-            # Refresh derived view of equity/dd for the rule pass.
+            # Refresh derived view of equity/dd/positions for the rule pass.
             cycle_record["positions"]["total_equity_usd"] = derived["total_equity_usd"]
+            cycle_record["positions"]["cash_usd"] = derived.get("cash_usd")
             cycle_record["positions"]["n_positions"] = len(derived["positions"])
+            cycle_record["positions"]["positions"] = derived["positions"]
 
         # --- Rule engine (post-strategy) ---------------------------------
         result = rule_engine.evaluate(
