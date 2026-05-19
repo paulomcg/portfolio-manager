@@ -365,19 +365,17 @@ class OnchainosSwapExecutor(SwapExecutor):
                 "execution_failed cli_output_invalid (non-JSON stdout)"
             )
 
-        # Permissive field extraction; tightened after first live verification.
         data = payload.get("data") if isinstance(payload, dict) else payload
-        tx_hash = (data or {}).get("txHash") or (data or {}).get("transactionHash")
-        fill_price = float(
-            (data or {}).get("executionPriceUsd")
-            or position.get("mark_price_usd", 0)
-        )
-        fees = float((data or {}).get("feesUsd") or 0)
-        slippage = float((data or {}).get("slippageUsd") or 0)
+        data = data or {}
+        parsed = self._parse_swap_response(data, position=position)
+        tx_hash = parsed["tx_hash"]
+        fill_price = parsed["fill_price_usd"]
+        fees = parsed["fees_usd"]
+        slippage = parsed["slippage_usd"]
 
         if is_buy:
-            qty_filled = float((data or {}).get("destAmount") or readable_amount)
-            gross = qty_filled * fill_price
+            qty_filled = parsed["dest_qty"] or float(readable_amount)
+            gross = parsed["gross_usd"] or (qty_filled * fill_price)
             return {
                 "ok": True,
                 "action": "buy",
@@ -393,8 +391,10 @@ class OnchainosSwapExecutor(SwapExecutor):
                 "raw": data,
             }
 
-        qty = readable_amount
-        gross = qty * fill_price
+        # sell / trim / exit — qty_swapped is the source-side amount (the asset
+        # we sold); gross is the destination-side USDC received.
+        qty = parsed["src_qty"] or float(readable_amount)
+        gross = parsed["dest_qty_usd"] or (qty * fill_price)
         cost_basis = float(position.get("cost_basis_usd", 0))
         total_qty = float(position.get("qty", 0)) or qty
         cost_basis_chunk = cost_basis * (qty / total_qty) if total_qty > 0 else cost_basis
@@ -413,4 +413,93 @@ class OnchainosSwapExecutor(SwapExecutor):
             "tx_hash": tx_hash,
             "executor": "onchainos",
             "raw": data,
+        }
+
+    @staticmethod
+    def _parse_swap_response(
+        data: dict[str, Any], position: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Adapter for the current ``onchainos swap execute`` response shape.
+
+        Real-world response (2026-05 verified) carries:
+          - swapTxHash, approveTxHash
+          - fromAmount/toAmount (string, minimal units)
+          - fromToken/toToken (each with decimal + tokenUnitPrice in USD)
+          - priceImpact (percent string, e.g. "-0.15")
+          - gasUsed (minimal units of native gas; not yet converted to USD)
+
+        Falls back to legacy keys (txHash, destAmount, executionPriceUsd,
+        feesUsd, slippageUsd) when present, so older shapes still parse.
+        """
+        tx_hash = (
+            data.get("swapTxHash")
+            or data.get("txHash")
+            or data.get("transactionHash")
+        )
+
+        def _amt(raw: Any, decimals: Any) -> float:
+            try:
+                d = int(decimals or 0)
+                v = float(raw or 0)
+                return v / (10 ** d) if d > 0 else v
+            except (TypeError, ValueError):
+                return 0.0
+
+        from_token = data.get("fromToken") or {}
+        to_token = data.get("toToken") or {}
+        src_qty = _amt(data.get("fromAmount"), from_token.get("decimal"))
+        dest_qty = _amt(data.get("toAmount"), to_token.get("decimal"))
+
+        # Legacy path: destAmount + executionPriceUsd
+        if not dest_qty:
+            try:
+                dest_qty = float(data.get("destAmount") or 0)
+            except (TypeError, ValueError):
+                pass
+
+        try:
+            to_unit_price = float(to_token.get("tokenUnitPrice") or 0)
+        except (TypeError, ValueError):
+            to_unit_price = 0.0
+        try:
+            from_unit_price = float(from_token.get("tokenUnitPrice") or 0)
+        except (TypeError, ValueError):
+            from_unit_price = 0.0
+
+        # Best-available fill price: prefer the destination token's unit price
+        # (the price we paid per unit of the *thing we received*), then any
+        # explicit executionPriceUsd, then the position's existing mark.
+        fill_price = (
+            to_unit_price
+            or float(data.get("executionPriceUsd") or 0)
+            or float(position.get("mark_price_usd", 0))
+        )
+
+        # USD-denominated gross on each leg.
+        gross_usd = src_qty * from_unit_price  # USD value spent (BUY) or USD-from-asset (SELL src)
+        dest_qty_usd = dest_qty * to_unit_price  # USD received on SELL
+
+        # Slippage from priceImpact (%) applied to the gross we spent.
+        try:
+            pi_pct = abs(float(data.get("priceImpact") or 0))
+        except (TypeError, ValueError):
+            pi_pct = 0.0
+        slippage_usd = gross_usd * pi_pct / 100.0 if gross_usd > 0 else float(data.get("slippageUsd") or 0)
+
+        # Fees: punt on gasUsed → USD conversion (needs native price); legacy
+        # `feesUsd` is honored when present.
+        try:
+            fees_usd = float(data.get("feesUsd") or 0)
+        except (TypeError, ValueError):
+            fees_usd = 0.0
+
+        return {
+            "tx_hash": tx_hash,
+            "src_qty": src_qty,
+            "dest_qty": dest_qty,
+            "gross_usd": gross_usd,
+            "dest_qty_usd": dest_qty_usd,
+            "fill_price_usd": fill_price,
+            "fees_usd": fees_usd,
+            "slippage_usd": slippage_usd,
         }
