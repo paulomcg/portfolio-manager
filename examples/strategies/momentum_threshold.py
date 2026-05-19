@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from scripts.helpers import has_position, rolling_return  # noqa: E402
 
 ASSET = "WSOL"
-LOOKBACK_BARS = 20
+# Lookback tuned for short-horizon backtests (the bundled 20-day fixture is
+# the smallest valid input). Increase to 20+ when running daily-bar live.
+LOOKBACK_BARS = 5
 ENTRY_THRESHOLD = 0.05      # +5% rolling return → buy
 EXIT_THRESHOLD = -0.05      # -5% rolling return → sell
 ENTRY_AMOUNT_USD = 100.0
