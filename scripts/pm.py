@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -463,7 +464,14 @@ def cmd_watch(args: argparse.Namespace) -> int:
         if args.max_loss_usd is None:
             return _failed("live_mode_missing_flag --max-loss-usd")
         if args.executor == "synthetic":
-            executor = SyntheticSwapExecutor()
+            # Allow backtest harnesses to override the simulator's cost
+            # assumptions via env vars; defaults match SyntheticSwapExecutor.
+            _fb = os.environ.get("PM_SYNTHETIC_FEE_BPS")
+            _sb = os.environ.get("PM_SYNTHETIC_SLIPPAGE_BPS")
+            executor = SyntheticSwapExecutor(
+                fee_bps=float(_fb) if _fb else 30.0,
+                slippage_bps=float(_sb) if _sb else 50.0,
+            )
         else:
             if not args.wallet:
                 return _failed("wallet_required live mode needs --wallet <address>")
