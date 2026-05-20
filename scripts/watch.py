@@ -53,12 +53,20 @@ def run_monitor(
     sleep_fn=time.sleep,
     executor: SwapExecutor | None = None,
     max_loss_usd: float | None = None,
+    max_wallet_loss_usd: float | None = None,
     strategy: StrategyInvocation | None = None,
     market_data: MarketDataSource | None = None,
 ) -> dict[str, Any]:
     """Run the watch loop. When ``executor`` is None it's monitor mode (no
     swaps); when provided it's live mode and ``max_loss_usd`` MUST be set —
     halts the loop when cumulative realized loss exceeds the cap.
+
+    ``max_wallet_loss_usd`` is an optional secondary kill-switch that compares
+    current wallet equity against a baseline captured on the first cycle. This
+    catches rug scenarios that ``max_loss_usd`` misses entirely — a token
+    whose liquidity vanishes mid-position never books a realized loss, but
+    the wallet equity drops anyway. Halts when
+    ``baseline_equity - current_equity > max_wallet_loss_usd``.
     """
     sink = sink or sys.stdout
     mode = "live" if executor is not None else "monitor"
@@ -71,6 +79,7 @@ def run_monitor(
     halt_reason: str | None = None
     interrupted = False
     realized_loss = 0.0
+    wallet_baseline_equity: float | None = None
 
     def _on_sigint(signum, frame):  # noqa: ARG001
         nonlocal interrupted
@@ -118,6 +127,34 @@ def run_monitor(
                     strategy=strategy,
                     market_data=market_data,
                 )
+                # Wallet-equity kill-switch — independent of realized P&L.
+                # Catches the rug case (no exit liquidity → no realized loss
+                # → existing kill never trips) by comparing against a
+                # baseline captured on the first cycle.
+                cur_equity = cycle_record.get("positions", {}).get("total_equity_usd")
+                if cur_equity is not None and wallet_baseline_equity is None:
+                    wallet_baseline_equity = float(cur_equity)
+                    cycle_record.setdefault("kill_switch", {})[
+                        "wallet_baseline_equity_usd"
+                    ] = round(wallet_baseline_equity, 2)
+                if wallet_baseline_equity is not None and cur_equity is not None:
+                    wallet_loss = wallet_baseline_equity - float(cur_equity)
+                    cycle_record.setdefault("kill_switch", {}).update({
+                        "wallet_baseline_equity_usd": round(wallet_baseline_equity, 2),
+                        "wallet_current_equity_usd": round(float(cur_equity), 2),
+                        "wallet_loss_from_baseline_usd": round(wallet_loss, 2),
+                        "max_wallet_loss_usd": max_wallet_loss_usd,
+                    })
+                    if (
+                        max_wallet_loss_usd is not None
+                        and wallet_loss > max_wallet_loss_usd
+                    ):
+                        raise WatchHalt(
+                            f"wallet_loss_cap_exceeded "
+                            f"baseline=${wallet_baseline_equity:.2f} "
+                            f"current=${float(cur_equity):.2f} "
+                            f"loss=${wallet_loss:.2f} cap=${max_wallet_loss_usd:.2f}"
+                        )
             except WatchHalt as e:
                 halted = True
                 halt_reason = str(e) or "capital_cap_exceeded"
@@ -159,6 +196,12 @@ def run_monitor(
         "fills": fills,
         "realized_loss_usd": round(realized_loss, 2),
         "max_loss_usd": max_loss_usd,
+        "wallet_baseline_equity_usd": (
+            round(wallet_baseline_equity, 2)
+            if wallet_baseline_equity is not None
+            else None
+        ),
+        "max_wallet_loss_usd": max_wallet_loss_usd,
         "halted": halted,
         "halt_reason": halt_reason,
         "interrupted": interrupted,

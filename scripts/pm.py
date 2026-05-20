@@ -516,6 +516,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
             iterations=args.iterations,
             executor=executor,
             max_loss_usd=args.max_loss_usd,
+            max_wallet_loss_usd=args.max_wallet_loss_usd,
             strategy=strategy_invoc,
             market_data=market_data,
         )
@@ -772,6 +773,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Hard kill switch — REQUIRED when --live is set; loop halts when cumulative realized loss exceeds this",
+    )
+    wa.add_argument(
+        "--max-wallet-loss-usd",
+        dest="max_wallet_loss_usd",
+        type=float,
+        default=None,
+        help=(
+            "Secondary kill switch comparing current wallet equity to a "
+            "baseline captured on the first cycle. Halts when "
+            "baseline - current > this cap. Optional but recommended for "
+            "live trading — catches rug scenarios that --max-loss-usd "
+            "misses entirely (rugged positions never book a realized loss)."
+        ),
     )
     wa.add_argument(
         "--executor",
