@@ -83,8 +83,8 @@ The strategy `.py` the user authored for live mode is the same
 artifact the companion
 [`strategy-backtester`](https://github.com/paulomcg/strategy-backtester)
 skill drives against historical OHLCV. The agent invokes the
-backtester and gets back the same metric shape plus an interactive
-HTML report.
+backtester and gets back the same metric shape — same Sharpe,
+same drawdown methodology, same audit-log format.
 
 ---
 
