@@ -214,7 +214,7 @@ def _ranked_buys() -> list[dict[str, Any]]:
         }
     for addr_l, kol in kol_by_addr.items():
         entry = pool.setdefault(addr_l, {
-            "address": addr_l,
+            "address": kol.get("address") or addr_l,
             "symbol": kol["symbol"],
             "sm_wallets": 0, "sm_count": 0, "sm_usd": 0.0, "sm_mcap": 0.0,
             "last_seen_ms": 0,
@@ -229,7 +229,7 @@ def _ranked_buys() -> list[dict[str, Any]]:
         if addr_l in pool:
             continue
         pool[addr_l] = {
-            "address": addr_l,
+            "address": meta.get("address") or addr_l,
             "symbol": meta["symbol"],
             "sm_wallets": 0, "sm_count": 0, "sm_usd": 0.0, "sm_mcap": 0.0,
             "last_seen_ms": 0,
@@ -352,6 +352,7 @@ def _kol_buys_by_addr() -> dict[str, dict[str, Any]]:
     agg = _aggregate(trades, SIGNAL_WINDOW_MIN)
     by_addr = {
         a["address"].lower(): {
+            "address": a["address"],
             "wallets": len(a["wallets"]),
             "count": a["count"],
             "symbol": a["symbol"],
@@ -401,12 +402,18 @@ def _memepump_metadata() -> dict[str, dict[str, Any]]:
 
     by_addr: dict[str, dict[str, Any]] = {}
     for t in tokens:
-        addr = (t.get("tokenAddress") or "").lower()
-        if not addr:
+        # Keep original-case address — Solana base58 is case-sensitive and
+        # `l` is not a valid base58 char, so .lower() will produce invalid
+        # addresses for some tokens. Use lowercased version ONLY as a dict
+        # key for cross-source matching.
+        addr_orig = t.get("tokenAddress") or ""
+        if not addr_orig:
             continue
+        addr = addr_orig.lower()
         market = t.get("market") or {}
         tags = t.get("tags") or {}
         by_addr[addr] = {
+            "address": addr_orig,
             "symbol": t.get("symbol") or "?",
             "name": t.get("name") or "",
             "mcap": _fpct(market.get("marketCapUsd")),
