@@ -4,7 +4,7 @@
  * useRef + useEffect for the outside-click handler.
  */
 import { useEffect, useRef, useState } from "react"
-import { Bell, BellOff } from "lucide-react"
+import { Bell, BellOff, Check, CheckCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { AlertRow } from "@/types"
@@ -12,6 +12,20 @@ import { fmtTsShort } from "@/lib/format"
 
 interface NotificationBellProps {
   alerts: AlertRow[]
+  onAcked?: () => void
+}
+
+async function postAck(body: { alert_ids?: string[]; all_unacked?: boolean }) {
+  try {
+    const res = await fetch("/api/alerts/ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 const SEV_STYLES: Record<AlertRow["severity"], string> = {
@@ -26,9 +40,28 @@ const SEV_DOT: Record<AlertRow["severity"], string> = {
   critical: "bg-destructive",
 }
 
-export function NotificationBell({ alerts }: NotificationBellProps) {
+export function NotificationBell({ alerts, onAcked }: NotificationBellProps) {
   const [open, setOpen] = useState(false)
+  const [acking, setAcking] = useState<string | "all" | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  async function ackOne(id: string | undefined) {
+    if (!id) return
+    setAcking(String(id))
+    const ok = await postAck({ alert_ids: [String(id)] })
+    setAcking(null)
+    if (ok) onAcked?.()
+  }
+
+  async function ackAll() {
+    setAcking("all")
+    const ok = await postAck({ all_unacked: true })
+    setAcking(null)
+    if (ok) {
+      onAcked?.()
+      setOpen(false)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -93,10 +126,27 @@ export function NotificationBell({ alerts }: NotificationBellProps) {
           <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Pending alerts
+              <span className="ml-2 text-[11px] text-muted-foreground/70 tabular-nums normal-case tracking-normal">
+                · {count}
+              </span>
             </div>
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {count} {count === 1 ? "alert" : "alerts"}
-            </span>
+            {count > 0 && (
+              <button
+                type="button"
+                onClick={ackAll}
+                disabled={acking === "all"}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border border-border",
+                  "px-2 py-1 text-[10px] uppercase tracking-wider",
+                  "hover:bg-muted/50 transition-colors",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                )}
+                title="Acknowledge every pending alert"
+              >
+                <CheckCheck className="size-3" />
+                {acking === "all" ? "clearing…" : "Clear all"}
+              </button>
+            )}
           </div>
 
           {count === 0 ? (
@@ -111,8 +161,10 @@ export function NotificationBell({ alerts }: NotificationBellProps) {
                 const msg = a.message ?? a.decision?.message ?? a.rule_id ?? "alert"
                 const asset = a.asset ?? a.decision?.asset
                 const ruleType = a.rule_type ?? a.decision?.rule_type
+                const ackId = a.alert_id ?? a.id
+                const ackKey = ackId ? String(ackId) : ""
                 return (
-                  <li key={id} className="px-4 py-3 hover:bg-muted/30">
+                  <li key={id} className="px-4 py-3 hover:bg-muted/30 group">
                     <div className="flex items-start gap-3">
                       <span
                         className={cn(
@@ -144,6 +196,19 @@ export function NotificationBell({ alerts }: NotificationBellProps) {
                           </div>
                         )}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => ackOne(ackKey)}
+                        disabled={!ackKey || acking === ackKey || acking === "all"}
+                        className={cn(
+                          "rounded-md border border-border p-1 shrink-0 mt-0.5",
+                          "opacity-0 group-hover:opacity-100 transition-opacity",
+                          "hover:bg-muted/50 disabled:opacity-40 disabled:cursor-not-allowed",
+                        )}
+                        title="Acknowledge this alert"
+                      >
+                        <Check className="size-3.5" />
+                      </button>
                     </div>
                   </li>
                 )

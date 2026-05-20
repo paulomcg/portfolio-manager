@@ -42,6 +42,38 @@ export function detectChainFromTxHash(hash: string | null | undefined): Chain {
   return "unknown"
 }
 
+export function detectChainFromAddress(addr: string | null | undefined): Chain {
+  if (!addr) return "unknown"
+  const a = addr.trim()
+  // EVM: 0x + 40 hex chars
+  if (/^0x[a-fA-F0-9]{40}$/.test(a)) return "ethereum"
+  // Solana addresses are base58, typically 32-44 chars
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)) return "solana"
+  return "unknown"
+}
+
+const SOLANA_ADDR_EXPLORER = "https://solscan.io/account/"
+const EVM_ADDR_EXPLORERS: Record<string, string> = {
+  ethereum: "https://etherscan.io/address/",
+  base: "https://basescan.org/address/",
+  bsc: "https://bscscan.com/address/",
+  polygon: "https://polygonscan.com/address/",
+  arbitrum: "https://arbiscan.io/address/",
+  optimism: "https://optimistic.etherscan.io/address/",
+}
+
+export function addressExplorerUrl(
+  addr: string | null | undefined,
+  chain?: Chain,
+): string | null {
+  if (!addr) return null
+  const c = chain && chain !== "unknown" ? chain : detectChainFromAddress(addr)
+  if (c === "solana") return SOLANA_ADDR_EXPLORER + addr
+  const evmBase = EVM_ADDR_EXPLORERS[c]
+  if (evmBase) return evmBase + addr
+  return null
+}
+
 export function txExplorerUrl(
   hash: string | null | undefined,
   chain?: Chain,

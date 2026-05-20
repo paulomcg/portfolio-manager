@@ -27,7 +27,7 @@ export default function App() {
       ? new URLSearchParams(window.location.search).get("wallet")
       : null
 
-  const { snapshot, equity, conn, error } = useDashboardState(wallet)
+  const { snapshot, equity, conn, error, refetch } = useDashboardState(wallet)
 
   // Refetch fills whenever a new snapshot arrives (cheapest "something
   // happened" signal — the SSE pump bumps the snapshot reference).
@@ -78,6 +78,7 @@ export default function App() {
         servedAtUtc={snapshot?.served_at_utc}
         mode={safety?.mode ?? null}
         alerts={alerts}
+        onAlertsAcked={refetch}
       />
 
       <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">

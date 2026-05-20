@@ -30,26 +30,33 @@ def _now_iso() -> str:
 def get_state(wallet: str | None = None) -> dict[str, Any]:
     """Return the most recent watch.cycle row's `positions` field +
     a manual-override view (from sqlite). When no audit exists yet, falls
-    back to sqlite-only data."""
+    back to sqlite-only data.
+
+    When no `wallet` is explicitly requested, the response auto-fills
+    from the most recent `watch.cycle` event so the UI can render the
+    wallet address (+ explorer link) without needing the caller to
+    pass `?wallet=...`.
+    """
     rows = audit.read(limit=1)  # newest first
     last_cycle = next(
         (r for r in rows if r.get("event") == "watch.cycle"
          and (wallet is None or r.get("wallet") == wallet)),
         None,
     )
+    effective_wallet = wallet or (last_cycle.get("wallet") if last_cycle else None)
     overrides: dict[str, Any] = {}
     hwms: dict[str, float] = {}
-    if wallet:
+    if effective_wallet:
         try:
-            overrides = positions.load_manual_overrides(wallet)
-            hwms = positions.load_hwm_state(wallet)
+            overrides = positions.load_manual_overrides(effective_wallet)
+            hwms = positions.load_hwm_state(effective_wallet)
         except sqlite3.Error:
             pass
     payload: dict[str, Any] = {
         "ok": True,
         "schema_version": API_SCHEMA_VERSION,
         "served_at_utc": _now_iso(),
-        "wallet": wallet,
+        "wallet": effective_wallet,
         "last_cycle": last_cycle,
         "manual_overrides": overrides,
         "high_water_marks": hwms,
@@ -105,6 +112,45 @@ def get_alerts_pending(
         "count": len(rows),
         "alerts": rows,
     }
+
+
+def ack_alerts(
+    *,
+    alert_ids: list[str] | None = None,
+    all_unacked: bool = False,
+    wallet: str | None = None,
+    severity: str | None = None,
+) -> dict[str, Any]:
+    """Mark alerts as acknowledged (acked = 1, acked_at_utc set).
+
+    Two modes:
+      - `alert_ids=[id1, id2, ...]` — ack only those rows.
+      - `all_unacked=True` — fetch every currently-pending row that
+        matches the optional wallet/severity filters and ack the whole
+        batch in one call. The UI's "Clear all" button uses this path.
+    """
+    if not alert_ids and not all_unacked:
+        return {"ok": False, "error": "alert_ids_or_all_unacked_required", "acked": 0}
+    try:
+        if all_unacked:
+            pending_rows = alerts.pending(
+                wallet_address=wallet,
+                severity=severity,
+                limit=10_000,
+            )
+            ids = [r["alert_id"] for r in pending_rows]
+        else:
+            ids = list(alert_ids or [])
+        if not ids:
+            return {"ok": True, "acked": 0, "not_found": 0}
+        res = alerts.ack(ids)
+        return {
+            "ok": True,
+            "acked": res.get("acked", 0),
+            "not_found": res.get("not_found", 0),
+        }
+    except sqlite3.Error as e:
+        return {"ok": False, "error": str(e), "acked": 0}
 
 
 # ---------------------------------------------------------------------------

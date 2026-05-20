@@ -1,9 +1,11 @@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ConnState } from "@/hooks/useDashboardState"
 import type { AlertRow } from "@/types"
 import { fmtTs, shortAddr } from "@/lib/format"
+import { addressExplorerUrl } from "@/lib/explorer"
 import { NotificationBell } from "@/components/NotificationBell"
 
 interface DashboardHeaderProps {
@@ -12,6 +14,7 @@ interface DashboardHeaderProps {
   servedAtUtc?: string
   mode: "live" | "monitor" | null
   alerts?: AlertRow[]
+  onAlertsAcked?: () => void
 }
 
 export function DashboardHeader({
@@ -20,6 +23,7 @@ export function DashboardHeader({
   servedAtUtc,
   mode,
   alerts = [],
+  onAlertsAcked,
 }: DashboardHeaderProps) {
   const dotClass =
     conn === "live"
@@ -63,9 +67,30 @@ export function DashboardHeader({
 
         <div className="text-sm">
           <span className="text-muted-foreground text-xs">wallet</span>
-          <span className="ml-1.5 font-mono text-xs">
-            {wallet ? shortAddr(wallet, 6) : "—"}
-          </span>
+          {wallet ? (
+            (() => {
+              const url = addressExplorerUrl(wallet)
+              const inner = (
+                <span className="font-mono text-xs">{shortAddr(wallet, 6)}</span>
+              )
+              return url ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-1.5 inline-flex items-center gap-1 hover:text-foreground hover:underline transition-colors"
+                  title={wallet}
+                >
+                  {inner}
+                  <ExternalLink className="size-3" />
+                </a>
+              ) : (
+                <span className="ml-1.5" title={wallet}>{inner}</span>
+              )
+            })()
+          ) : (
+            <span className="ml-1.5 font-mono text-xs">—</span>
+          )}
         </div>
 
         <div className="ms-auto flex items-center gap-4">
@@ -77,7 +102,7 @@ export function DashboardHeader({
               {conn === "live" ? "● live · SSE" : conn === "connecting" ? "○ connecting…" : "✕ offline"}
             </div>
           </div>
-          <NotificationBell alerts={alerts} />
+          <NotificationBell alerts={alerts} onAcked={onAlertsAcked} />
         </div>
       </div>
     </header>

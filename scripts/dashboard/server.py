@@ -100,6 +100,20 @@ JSON_ROUTES: dict[str, Callable[[dict[str, str]], dict[str, Any]]] = {
 }
 
 
+def _post_alerts_ack(body: dict[str, Any]) -> dict[str, Any]:
+    return api.ack_alerts(
+        alert_ids=body.get("alert_ids"),
+        all_unacked=bool(body.get("all_unacked", False)),
+        wallet=body.get("wallet"),
+        severity=body.get("severity"),
+    )
+
+
+JSON_POST_ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "/api/alerts/ack": _post_alerts_ack,
+}
+
+
 # ---------------------------------------------------------------------------
 # Request handler
 # ---------------------------------------------------------------------------
@@ -114,6 +128,29 @@ class DashboardHandler(BaseHTTPRequestHandler):
             super().log_message(format, *args)
 
     # ----- routing -----------------------------------------------------
+
+    def do_POST(self):  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if path not in JSON_POST_ROUTES:
+            self._serve_error(404, "not found")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+        try:
+            body = json.loads(raw.decode("utf-8")) if raw else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._serve_error(400, "invalid_json")
+            return
+        if not isinstance(body, dict):
+            self._serve_error(400, "body_must_be_object")
+            return
+        try:
+            payload = JSON_POST_ROUTES[path](body)
+        except Exception as e:  # noqa: BLE001 — surface as JSON, not 500-stacktrace
+            self._serve_error(500, f"{type(e).__name__}: {e}")
+            return
+        self._serve_json(payload, status=200 if payload.get("ok", True) else 400)
 
     def do_GET(self):  # noqa: N802
         parsed = urlparse(self.path)
