@@ -70,7 +70,9 @@ MAX_BUNDLERS_PCT = 20.0      # > 20% bundlers = bundled distribution scheme
 MAX_DEV_HOLDINGS_PCT = 15.0  # > 15% dev = dev can dump on us
 MAX_INSIDERS_PCT = 15.0      # > 15% insiders = same wallet cluster
 MAX_TOP10_PCT = 40.0         # > 40% in top 10 holders = whale dump risk
-MIN_HOLDERS = 100            # < 100 holders = too thin / pre-distribution
+MIN_HOLDERS = 300            # < 300 holders = too thin (Pizza had ~228 and
+                              # still rugged; raised floor as a second guard
+                              # behind the hard SM/KOL gate)
 
 # Momentum thresholds (memepump 1h stats)
 MIN_VOLUME_USD_1H = 1000.0    # need real activity, not zombie tokens
@@ -105,7 +107,18 @@ _stale_counter: dict[str, int] = {}
 # cooldown — if we just sold a token (dump-detect, trailing-stop, signal-decay,
 # or any other exit), we don't want the strategy whipsawing back in 10s later
 # at a worse price. Persists across decide() calls.
+#
+# Seeded at import from YOLO_COOLDOWN_ADDRS env var (comma-separated, lower-
+# case). Useful when a token was sold manually (not via the strategy) and we
+# still want PM to honor a cooldown.
 _recently_sold: dict[str, float] = {}
+_seed_addrs = (os.environ.get("YOLO_COOLDOWN_ADDRS") or "").strip()
+if _seed_addrs:
+    _seed_ts = time.time()
+    for _a in _seed_addrs.split(","):
+        _a = _a.strip().lower()
+        if _a:
+            _recently_sold[_a] = _seed_ts
 
 # Cooldown window — 30 min. Long enough that a momentary dump that triggered
 # our exit isn't immediately followed by re-entry on the bounce (the TROLL
@@ -253,18 +266,19 @@ def _ranked_buys() -> list[dict[str, Any]]:
     for addr_l, c in pool.items():
         meta = mp_by_addr.get(addr_l, {})
 
-        # Multi-track gating: pass if EITHER
-        #  (a) ≥ MIN_WALLETS SM or KOL buyers, OR
-        #  (b) memepump strong-momentum criteria
+        # HARD-GATE: require smart-money OR KOL confirmation. Memepump-momentum
+        # alone is NOT enough — that path got us into Pizza (cleared all anti-
+        # rug filters but rugged $25 → $2.73 in <5 min). Anti-rug metadata is
+        # a LAGGING indicator: a token can pass holders/snipers/bundlers/dev
+        # checks and still be rugged by adaptive liquidity pulls. Pre-bonded
+        # whale or influencer participation is the only signal we have that
+        # at least someone with skin in the game is on the same side as us.
+        #
+        # Memepump 1h volume + buy/sell ratio are still scored below (kicker
+        # to surface SM-confirmed candidates with cross-source confirmation),
+        # but they cannot trigger entry by themselves.
         has_sm_signal = c["sm_wallets"] >= MIN_WALLETS or c["kol_wallets"] >= MIN_WALLETS
-        has_momentum_signal = bool(
-            meta
-            and meta["vol_1h"] >= STRONG_VOLUME_USD_1H
-            and meta["buy_1h"] > 0
-            and meta["sell_1h"] >= 0
-            and meta["buy_1h"] >= meta["sell_1h"] * STRONG_BUY_RATIO
-        )
-        if not (has_sm_signal or has_momentum_signal):
+        if not has_sm_signal:
             continue
 
         # Market cap — prefer memepump (live), fall back to tracker estimate
