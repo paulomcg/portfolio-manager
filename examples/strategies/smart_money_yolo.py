@@ -41,7 +41,7 @@ DUMP_WALLETS_THRESHOLD = 2   # distinct smart-money SELLERS required to exit
 MIN_VOLUME_USD = 500
 MIN_MARKET_CAP_USD = 250_000
 SIGNAL_WINDOW_MIN = 90   # 1.5h — favor fresh explosive signals only
-SIGNAL_CACHE_SEC = 50    # < PM cycle (60s) so cache refreshes once per cycle
+SIGNAL_CACHE_SEC = 30    # cache TTL; balances API spend vs reaction speed
 
 # Trailing exit from per-position high — replaces fixed take-profit.
 # Once a position has printed above its cost basis at some point, exit when
