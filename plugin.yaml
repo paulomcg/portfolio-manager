@@ -1,7 +1,7 @@
 schema_version: 1
 name: portfolio-manager
-version: "0.2.0"
-description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via an agent-authored decide() callback) AND the rules + supervision (when to exit via drawdown halts / position caps / trailing stops) AND the audit + reports AND a read-only local web dashboard for observability. Polls a wallet, optionally streams real-time market data via okx-dex-ws, applies strategy actions and rule decisions through the existing okx-dex-swap executor with a hard max-loss-usd kill switch in live mode. `pm report` computes Sharpe / Sortino / Calmar / max-DD / win-rate / expectancy / CAGR from any audit log. `pm dashboard` opens a local browser UI with live SSE updates showing positions, equity curve, pending alerts, recent activity. Trigger phrases: trade strategy, agentic trader, decide when to buy, portfolio risk rules, drawdown halt, position cap, trailing stop, alerts queue, audit log, pm report, pm dashboard, observability, equity curve, max drawdown, sharpe ratio, max loss kill switch."
+version: "0.2.1"
+description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via an agent-authored decide() callback) AND the rules + supervision (when to exit via drawdown halts / position caps / trailing stops) AND the audit + reports AND a read-only local web dashboard for observability. Polls a wallet, optionally streams real-time market data via okx-dex-ws, applies strategy actions and rule decisions through the existing okx-dex-swap executor with TWO independent kill-switches in live mode: --max-loss-usd (cumulative realized loss) AND --max-wallet-loss-usd (wallet equity drop from baseline; catches rugged-token unrealized losses the realized-only kill misses entirely). `pm report` computes Sharpe / Sortino / Calmar / max-DD / win-rate / expectancy / CAGR from any audit log. `pm dashboard` opens a local browser UI with live SSE updates showing positions, equity curve, pending alerts, recent activity, kill-switch headroom. Trigger phrases: trade strategy, agentic trader, decide when to buy, portfolio risk rules, drawdown halt, position cap, trailing stop, alerts queue, audit log, pm report, pm dashboard, observability, equity curve, max drawdown, sharpe ratio, max loss kill switch, wallet equity kill switch, rug protection."
 author:
   name: "Paulo Goncalves"
   github: "paulomcg"
@@ -23,6 +23,8 @@ tags:
   - observability
   - sharpe
   - backtesting-ready
+  - wallet-equity-kill-switch
+  - rug-protection
 
 components:
   skill:

@@ -1,7 +1,7 @@
 ---
 name: portfolio-manager
-description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via a Python decide() callback the agent authors), the rules + supervision (when to exit via drawdown halts / position caps / trailing stops), and the audit + reports (Sharpe, Sortino, max DD, win rate, equity chart via pm report). Use when the user says: build a trading strategy, decide when to buy, run my strategy live, run my strategy on history, watch my portfolio, manage positions, set up risk rules, drawdown halt, trailing stop, position cap, max loss kill switch, audit my trades, pm report, sharpe, equity curve."
-version: "0.2.0"
+description: "Agentic trading agent for OKX Agentic Wallet. Owns the strategy + decision-making (when to open via a Python decide() callback the agent authors), the rules + supervision (when to exit via drawdown halts / position caps / trailing stops), and the audit + reports (Sharpe, Sortino, max DD, win rate, equity chart via pm report). TWO independent kill-switches in live mode: --max-loss-usd (cumulative realized loss) AND --max-wallet-loss-usd (wallet equity drop from baseline; catches rugged-token unrealized losses). Use when the user says: build a trading strategy, decide when to buy, run my strategy live, run my strategy on history, watch my portfolio, manage positions, set up risk rules, drawdown halt, trailing stop, position cap, max loss kill switch, wallet equity kill switch, rug protection, audit my trades, pm report, sharpe, equity curve."
+version: "0.2.1"
 license: MIT
 metadata:
   author: paulomcg

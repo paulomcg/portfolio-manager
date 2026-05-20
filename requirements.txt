@@ -1,0 +1,13 @@
+# Pinned runtime dependencies for portfolio-manager.
+# These are the imports used by scripts/*.py — no dev / test deps here
+# (those go in requirements-dev.txt if/when needed).
+
+# Rule + schema validation
+pyyaml>=6.0
+jsonschema>=4.0
+
+# Position derivation + market data
+pandas>=2.0
+
+# Dashboard charts (used by report.py for equity.png)
+matplotlib>=3.7

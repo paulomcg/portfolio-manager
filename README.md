@@ -101,11 +101,28 @@ npx skills add okx/plugin-store --skill portfolio-manager
 ```sh
 git clone https://github.com/paulomcg/portfolio-manager.git ~/Projects/portfolio-manager
 cd ~/Projects/portfolio-manager
-python3 -m venv .venv
-.venv/bin/pip install jsonschema pyyaml pytest
+./install.sh                                # one-shot: venv + deps + smoke tests
 echo 'export PATH="$HOME/Projects/portfolio-manager/bin:$PATH"' >> ~/.bashrc  # or .zshrc
-pm --version  # → "pm 0.1.0"
+pm --version
 ```
+
+### Using this skill from an agent (Claude / Codex / etc.)
+
+The repo follows the standard "single SKILL.md with YAML frontmatter"
+convention. Agent harnesses can discover the skill in one of three ways:
+
+| Method | Path |
+|---|---|
+| Drop into Claude Code's skills dir | `cp -r . ~/.claude/skills/portfolio-manager/` then restart Claude |
+| Point a custom agent at the SKILL.md | parse the YAML frontmatter (name / description / trigger phrases) and shell out to `bin/pm` per command |
+| Register with the OKX Plugin Store | `plugin.yaml` carries the manifest (schema_version: 1) |
+
+Every CLI command emits `{"ok": bool, "result": {...}}` JSON envelopes
+on stdout (with `--format json`, the default) so any agent harness can
+consume the output without parsing English. Errors print
+`FAILED: <category> <detail>` to stderr and exit non-zero — the
+category is stable + machine-parseable. See `SKILL.md` for the full
+schema, error vocabulary, and programmatic embedding examples.
 
 For real-wallet runs, also:
 
