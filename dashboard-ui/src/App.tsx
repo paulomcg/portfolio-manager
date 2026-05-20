@@ -5,8 +5,6 @@ import { KillSwitchPanel } from "@/components/KillSwitchPanel"
 import { ActiveRulesPanel } from "@/components/ActiveRulesPanel"
 import { EquityChart } from "@/components/EquityChart"
 import { PositionsPanel } from "@/components/PositionsPanel"
-import { AlertsPanel } from "@/components/AlertsPanel"
-import { AuditPanel } from "@/components/AuditPanel"
 import { TradesPanel } from "@/components/TradesPanel"
 import { useFills } from "@/hooks/useFills"
 import {
@@ -69,7 +67,6 @@ export default function App() {
   const safety = snapshot?.safety
   const metrics = snapshot?.metrics?.metrics ?? ({} as any)
   const alerts = snapshot?.alerts_pending?.alerts ?? []
-  const auditRows = snapshot?.audit?.rows ?? []
   const cash = state?.last_cycle?.positions?.cash_usd
   const totalEquity = state?.last_cycle?.positions?.total_equity_usd
 
@@ -80,6 +77,7 @@ export default function App() {
         wallet={snapshot?.wallet ?? null}
         servedAtUtc={snapshot?.served_at_utc}
         mode={safety?.mode ?? null}
+        alerts={alerts}
       />
 
       <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
@@ -132,11 +130,6 @@ export default function App() {
         />
 
         <TradesPanel fills={fills} />
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <AlertsPanel alerts={alerts} />
-          <AuditPanel rows={auditRows} />
-        </div>
 
         <footer className="pt-6 pb-12 text-center text-[11px] text-muted-foreground">
           read-only · localhost · SSE updates ·{" "}

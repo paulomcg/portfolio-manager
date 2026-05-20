@@ -2,13 +2,16 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import type { ConnState } from "@/hooks/useDashboardState"
+import type { AlertRow } from "@/types"
 import { fmtTs, shortAddr } from "@/lib/format"
+import { NotificationBell } from "@/components/NotificationBell"
 
 interface DashboardHeaderProps {
   conn: ConnState
   wallet: string | null
   servedAtUtc?: string
   mode: "live" | "monitor" | null
+  alerts?: AlertRow[]
 }
 
 export function DashboardHeader({
@@ -16,6 +19,7 @@ export function DashboardHeader({
   wallet,
   servedAtUtc,
   mode,
+  alerts = [],
 }: DashboardHeaderProps) {
   const dotClass =
     conn === "live"
@@ -64,13 +68,16 @@ export function DashboardHeader({
           </span>
         </div>
 
-        <div className="ms-auto flex flex-col items-end text-right">
-          <div className="text-xs text-muted-foreground tabular-nums">
-            {servedAtUtc ? `updated ${fmtTs(servedAtUtc)}` : "—"}
+        <div className="ms-auto flex items-center gap-4">
+          <div className="flex flex-col items-end text-right">
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {servedAtUtc ? `updated ${fmtTs(servedAtUtc)}` : "—"}
+            </div>
+            <div className="font-mono text-[10px] text-muted-foreground/70 uppercase tracking-wider">
+              {conn === "live" ? "● live · SSE" : conn === "connecting" ? "○ connecting…" : "✕ offline"}
+            </div>
           </div>
-          <div className="font-mono text-[10px] text-muted-foreground/70 uppercase tracking-wider">
-            {conn === "live" ? "● live · SSE" : conn === "connecting" ? "○ connecting…" : "✕ offline"}
-          </div>
+          <NotificationBell alerts={alerts} />
         </div>
       </div>
     </header>
