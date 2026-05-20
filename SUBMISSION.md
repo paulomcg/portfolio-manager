@@ -75,7 +75,7 @@ categorization, and a synthetic-executor fallback for tests / dry runs.
 | Re-buy cooldown after every sell to prevent dump-exit / re-entry whipsaws | `examples/strategies/smart_money_yolo.py` (commit `e566b8d`) |
 | Error categorization: `wallet_not_logged_in`, `cli_not_found`, `cli_timeout`, `execution_failed`, `cli_output_invalid` | `scripts/executor.py:350-365` |
 | Synthetic executor (`--executor synthetic`) for cap-enforcement demos without burning capital | `scripts/executor.py` |
-| Position ledger refresh AFTER strategy fills so the same cycle's rule pass sees the correct state | `scripts/watch.py:234-238` |
+| Position ledger refresh AFTER strategy fills so the same cycle's rule pass sees the correct state | `scripts/watch.py:277-285` |
 
 **Evidence — live run 2026-05-20:** 30+ real swaps executed against
 OnChainOS Solana, successfully handled token-not-supported errors,
@@ -117,7 +117,7 @@ state.
 
 | What | Where |
 |---|---|
-| Per-cycle JSON record on stdout — positions, decisions, fills, errors, kill-switch state, diagnostics | `scripts/watch.py:97-141` |
+| Per-cycle JSON record on stdout — positions, decisions, fills, errors, kill-switch state, diagnostics | `scripts/watch.py:106-180` |
 | Append-only audit log (`audit.jsonl`) with `watch.cycle` events | `scripts/audit.py` |
 | Ack-able alerts queue (`pm alerts pending` / `pm alerts ack`) | `scripts/alerts.py` |
 | Web dashboard with live equity chart, position panel, kill-switch headroom, active rules, recent alerts — Chart.js + SSE push | `scripts/pm.py dashboard`, `dashboard-ui/` |
