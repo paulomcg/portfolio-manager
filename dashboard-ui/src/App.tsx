@@ -7,6 +7,8 @@ import { EquityChart } from "@/components/EquityChart"
 import { PositionsPanel } from "@/components/PositionsPanel"
 import { AlertsPanel } from "@/components/AlertsPanel"
 import { AuditPanel } from "@/components/AuditPanel"
+import { TradesPanel } from "@/components/TradesPanel"
+import { useFills } from "@/hooks/useFills"
 import {
   Card,
   CardContent,
@@ -28,6 +30,11 @@ export default function App() {
       : null
 
   const { snapshot, equity, conn, error } = useDashboardState(wallet)
+
+  // Refetch fills whenever a new snapshot arrives (cheapest "something
+  // happened" signal — the SSE pump bumps the snapshot reference).
+  const refreshKey = useMemo(() => snapshot?.state?.last_cycle?.cycle_id ?? 0, [snapshot])
+  const { fills } = useFills(wallet, refreshKey as unknown as number, 100)
 
   const positions = useMemo(
     () => snapshot?.state?.last_cycle?.positions?.positions ?? [],
@@ -108,8 +115,11 @@ export default function App() {
               <LineChartIcon className="size-3.5" />
               Equity curve
             </CardTitle>
-            <div className="text-[10px] text-muted-foreground tabular-nums">
-              {equity?.count ?? 0} cycles
+            <div
+              className="text-[10px] text-muted-foreground tabular-nums"
+              title="One data point per pm watch iteration"
+            >
+              {equity?.count ?? 0} updates
             </div>
           </CardHeader>
           <CardContent className="px-3 pt-4 pb-3">
@@ -125,6 +135,8 @@ export default function App() {
           cashUsd={cash}
           totalEquityUsd={totalEquity}
         />
+
+        <TradesPanel fills={fills} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <AlertsPanel alerts={alerts} />

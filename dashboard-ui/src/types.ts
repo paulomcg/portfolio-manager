@@ -43,13 +43,21 @@ export interface StatePayload {
 }
 
 export interface AlertRow {
-  id: number
-  ts_utc: string
+  // API actually returns `alert_id` + `created_at_utc`; `id`/`ts_utc`
+  // are kept optional for backwards compatibility with older audit
+  // snapshots. The UI prefers the canonical names below.
+  id?: number
+  alert_id?: number
+  ts_utc?: string
+  created_at_utc?: string
+  acked_at_utc?: string | null
+  wallet_address?: string
   rule_id?: string
   rule_type?: string
   severity: "info" | "warn" | "critical"
   asset?: string | null
-  message: string
+  message?: string
+  decision?: { message?: string; asset?: string; rule_type?: string; [k: string]: unknown }
   acked?: boolean
 }
 

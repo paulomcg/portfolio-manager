@@ -63,35 +63,34 @@ export function fmtQty(n: number | null | undefined): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 8 })
 }
 
-export function fmtTs(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-  } catch {
-    return iso
-  }
+export function fmtTs(iso: string | null | undefined): string {
+  // Guard against null/undefined/empty + "Invalid Date" which
+  // toLocaleString silently emits when the constructor fails (no
+  // exception thrown — that's why try/catch alone didn't help).
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
 }
 
-export function fmtTsShort(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString("en-US", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-  } catch {
-    return iso
-  }
+export function fmtTsShort(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
 }
 
 export function fmtDuration(startIso: string, endIso: string): string {

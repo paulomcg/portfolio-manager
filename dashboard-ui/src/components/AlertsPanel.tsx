@@ -41,39 +41,48 @@ export function AlertsPanel({ alerts }: AlertsPanelProps) {
           </div>
         ) : (
           <ul className="divide-y divide-border/60 max-h-[320px] overflow-auto">
-            {alerts.map((a) => (
-              <li key={a.id} className="px-5 py-3">
-                <div className="flex items-start gap-3">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "font-mono text-[10px] uppercase tracking-wider shrink-0 mt-0.5",
-                      SEV_STYLES[a.severity],
-                    )}
-                  >
-                    {a.severity}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-medium text-sm">
-                        {a.rule_id ?? a.rule_type ?? "alert"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {fmtTsShort(a.ts_utc)}
-                      </span>
-                    </div>
-                    <p className="text-[12px] text-muted-foreground mt-1">
-                      {a.message}
-                    </p>
-                    {a.asset && (
-                      <div className="mt-1 text-[10px] font-mono text-muted-foreground/80 uppercase tracking-wider">
-                        {a.asset}
+            {alerts.map((a) => {
+              // API returns `created_at_utc` + `alert_id`; older snapshots
+              // used `ts_utc` + `id`. Read either, prefer the canonical.
+              const ts = a.created_at_utc ?? a.ts_utc
+              const id = a.alert_id ?? a.id ?? `${ts ?? ""}-${a.rule_id ?? ""}`
+              const msg = a.message ?? a.decision?.message ?? a.rule_id ?? "alert"
+              const asset = a.asset ?? a.decision?.asset
+              const ruleType = a.rule_type ?? a.decision?.rule_type
+              return (
+                <li key={id} className="px-5 py-3">
+                  <div className="flex items-start gap-3">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-mono text-[10px] uppercase tracking-wider shrink-0 mt-0.5",
+                        SEV_STYLES[a.severity],
+                      )}
+                    >
+                      {a.severity}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium text-sm">
+                          {a.rule_id ?? ruleType ?? "alert"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {fmtTsShort(ts)}
+                        </span>
                       </div>
-                    )}
+                      <p className="text-[12px] text-muted-foreground mt-1">
+                        {msg}
+                      </p>
+                      {asset && (
+                        <div className="mt-1 text-[10px] font-mono text-muted-foreground/80 uppercase tracking-wider">
+                          {asset}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </CardContent>

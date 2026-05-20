@@ -53,10 +53,10 @@ export function HeroMetrics({ state, metrics, cycleCount }: HeroMetricsProps) {
         size="lg"
       />
       <MetricCard
-        label="Cycles"
+        label="Updates"
         value={cycleCount}
         size="lg"
-        hint={metrics.bars > 0 ? `${metrics.bars} bars` : undefined}
+        hint={metrics.bars > 0 ? `${metrics.bars} data pts` : "pm watch ticks"}
       />
     </section>
   )

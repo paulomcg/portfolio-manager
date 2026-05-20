@@ -108,6 +108,72 @@ def get_alerts_pending(
 
 
 # ---------------------------------------------------------------------------
+# /api/fills — flattened buy/sell history extracted from audit cycles
+# ---------------------------------------------------------------------------
+
+
+def get_fills(
+    *,
+    wallet: str | None = None,
+    asset: str | None = None,
+    limit: int = 100,
+    since: str | None = None,
+) -> dict[str, Any]:
+    """Return the recent fills (buys + sells) across all watch cycles.
+
+    The audit log is the source of truth; each `watch.cycle` event
+    carries a `fills` list. This route flattens those into a single
+    chronological stream so the UI can render an actual trades-history
+    table without having to scan cycle records itself.
+
+    Fields surfaced per fill: ts_utc, action (buy/sell/exit/trim),
+    asset, qty_swapped, fill_price_usd, gross_proceeds_usd, fees_usd,
+    slippage_usd, realized_pnl_usd, tx_hash, executor, source
+    (strategy | rule), cycle_index.
+    """
+    raw = audit.read(limit=None, since=since)
+    out: list[dict[str, Any]] = []
+    for r in raw:
+        if r.get("event") != "watch.cycle":
+            continue
+        if wallet and r.get("wallet") != wallet:
+            continue
+        cycle_ts = r.get("ts_utc")
+        cycle_index = r.get("cycle_index")
+        for f in r.get("fills") or []:
+            if not isinstance(f, dict):
+                continue
+            if f.get("ok") is False:
+                continue
+            if asset and (f.get("asset") or "").upper() != asset.upper():
+                continue
+            out.append({
+                "ts_utc": cycle_ts,
+                "cycle_index": cycle_index,
+                "action": f.get("action"),
+                "asset": f.get("asset"),
+                "qty_swapped": f.get("qty_swapped"),
+                "fill_price_usd": f.get("fill_price_usd"),
+                "gross_proceeds_usd": f.get("gross_proceeds_usd"),
+                "fees_usd": f.get("fees_usd"),
+                "slippage_usd": f.get("slippage_usd"),
+                "realized_pnl_usd": f.get("realized_pnl_usd"),
+                "tx_hash": f.get("tx_hash"),
+                "executor": f.get("executor"),
+                "source": f.get("source"),
+            })
+    # Newest first, then cap
+    out.sort(key=lambda x: x.get("ts_utc") or "", reverse=True)
+    out = out[: max(0, int(limit))]
+    return {
+        "ok": True,
+        "schema_version": API_SCHEMA_VERSION,
+        "count": len(out),
+        "fills": out,
+    }
+
+
+# ---------------------------------------------------------------------------
 # /api/equity — equity time series from audit
 # ---------------------------------------------------------------------------
 
