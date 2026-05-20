@@ -381,14 +381,19 @@ def get_safety(*, wallet: str | None = None) -> dict[str, Any]:
 
 
 def get_snapshot(*, wallet: str | None = None, audit_limit: int = 30) -> dict[str, Any]:
+    state = get_state(wallet=wallet)
+    # Auto-discovered wallet from the most recent audit cycle when no
+    # explicit ?wallet= was passed. Surface it at the top of the
+    # snapshot so the UI doesn't have to dig into state.wallet.
+    effective_wallet = wallet or state.get("wallet")
     return {
         "ok": True,
         "schema_version": API_SCHEMA_VERSION,
         "served_at_utc": _now_iso(),
-        "wallet": wallet,
-        "state": get_state(wallet=wallet),
-        "audit": get_audit(limit=audit_limit, wallet=wallet),
-        "alerts_pending": get_alerts_pending(wallet=wallet),
-        "metrics": get_metrics(wallet=wallet),
-        "safety": get_safety(wallet=wallet),
+        "wallet": effective_wallet,
+        "state": state,
+        "audit": get_audit(limit=audit_limit, wallet=effective_wallet),
+        "alerts_pending": get_alerts_pending(wallet=effective_wallet),
+        "metrics": get_metrics(wallet=effective_wallet),
+        "safety": get_safety(wallet=effective_wallet),
     }
