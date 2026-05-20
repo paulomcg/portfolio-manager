@@ -22,83 +22,100 @@ records every decision.
 
 ## What you can ask the agent to do
 
-The skill is installed; the agent picks it up via SKILL.md frontmatter
-when the user's request matches. Examples of natural-language prompts
-and what the agent does with them:
+The skill is installed; the agent picks it up via the `SKILL.md`
+frontmatter when the user's request matches. Below: natural-language
+prompts the user says, and what the agent does with them.
 
-### "Run my weekly DCA into SOL, cap losses at $50"
+---
 
-The agent drafts a tiny Python `decide()` callback (or picks one from
-`examples/strategies/`), wires it into a watch loop with both
-kill-switches enabled, and PM takes over: every 7 days it buys $100
-of WSOL via OnChainOS swap, every cycle it checks the user's rules
+> **"Run my weekly DCA into SOL, cap losses at $50."**
+
+The agent drafts a small Python `decide()` callback (or picks one
+from `examples/strategies/`), wires it into a `pm watch` loop with
+both kill-switches enabled, and PM takes over. Every 7 days it buys
+$100 of WSOL via OnChainOS swap; every cycle it checks the rules
 (drawdown halt, position caps, trailing stops). The moment cumulative
-realized loss crosses $50 OR wallet equity drops $100 below baseline,
-the loop halts itself.
+realized loss crosses $50 OR wallet equity drops $100 below
+baseline, the loop halts itself.
 
-### "Watch my wallet for the next hour and tell me what's risky"
+---
+
+> **"Watch my wallet for the next hour and tell me what's risky."**
 
 Agent starts PM in monitor mode against the address — no swaps fire,
 no keys needed. PM polls the wallet, derives positions, evaluates the
-configured rules every cycle. Whenever a rule would have triggered,
-PM emits a structured alert with the asset, the rule that fired, the
-recommended action, and the reason ("WSOL is 72% of portfolio,
-exceeds 40% cap (trim to 40%)"). The agent reads them off stdout or
-the alerts queue and surfaces them.
+configured rules every cycle. Whenever a rule would have fired, PM
+emits a structured alert with the asset, the rule, the recommended
+action, and the reason ("WSOL is 72% of portfolio, exceeds 40% cap
+— trim to 40%"). The agent surfaces them.
 
-### "What happened to my portfolio overnight?"
+---
 
-Episodic check-in — the agent reads PM's append-only audit log
-(`state/audit.jsonl`) since the user last asked, summarizes any rules
-that fired, any trades that executed, and the current equity vs the
-overnight low. The audit log is the source of truth; no remote
+> **"What happened to my portfolio overnight?"**
+
+Episodic check-in. The agent reads PM's append-only audit log
+(`state/audit.jsonl`) since the user last asked, summarizes any
+rules that fired, any trades that executed, and current equity vs
+the overnight low. The audit log is the source of truth; no remote
 service is involved.
 
-### "Did anything alert critical that I haven't seen?"
+---
 
-The daemon pattern: PM runs as a background watch process; the agent
-queries the alerts queue (`pm alerts pending --severity critical`),
-shows the user any unacked critical alerts, and acks them once the
-user has been shown.
+> **"Did anything critical alert that I haven't seen?"**
 
-### "Open the dashboard"
+The daemon pattern. PM runs as a background watch process; the
+agent queries the alerts queue, shows any unacked critical alerts,
+and acks them once the user has been shown.
+
+---
+
+> **"Open the dashboard."**
 
 Agent starts `pm dashboard` bound to the host's tailnet IP (or
-localhost). The user opens it on their phone or laptop and sees:
+localhost). The user opens it on phone or laptop and sees:
 
-- Live equity curve with 24H / 7D / 1M / ALL range toggle
-- Hero metrics (Equity / Return / Max DD / Sharpe / Sortino)
+- Live equity curve with **24H / 7D / 1M / ALL** range toggle
+- Hero metrics — equity, return, max DD, Sharpe, Sortino
 - Active rules with chunky threshold numbers
-- Kill-switch headroom
+- Kill-switch headroom (both realized + wallet-equity)
 - Positions table
 - Full trade history with clickable tx-hash links to solscan /
   etherscan / basescan (auto-routed by hash format)
 - A header bell showing pending alerts with per-alert + "clear all"
   ack buttons
 
-SSE-pushed updates as PM writes new audit rows. Read-only — no
-buttons fire swaps.
+SSE-pushed updates on every new audit row. Read-only by design —
+no UI button fires a swap.
 
-### "Generate a Sharpe / max-DD report for the last month"
+---
+
+> **"Generate a Sharpe / max-DD report for the last month."**
 
 Agent runs `pm report` against the audit log and gets back
 `report.json` + `report.md` + `equity.png` with drawdown shading.
-Sharpe / Sortino / Calmar / max-DD / win rate / expectancy / CAGR
-all computed locally from the audit — no external services.
+Sharpe, Sortino, Calmar, max-DD, win rate, expectancy, CAGR — all
+computed locally from the audit. No external services.
 
-### "Backtest this same strategy on a year of historical data"
+---
 
-The strategy `.py` file the user authored for live mode is the same
+> **"Backtest this same strategy on a year of historical data."**
+
+The strategy `.py` the user authored for live mode is the same
 artifact the companion
 [`strategy-backtester`](https://github.com/paulomcg/strategy-backtester)
 skill drives against historical OHLCV. The agent invokes the
-backtester, gets back the same metrics + an interactive HTML report.
+backtester and gets back the same metric shape plus an interactive
+HTML report.
 
-### "Halt everything immediately"
+---
+
+> **"Halt everything immediately."**
 
 Agent kills the PM watch process. There is no persisted "live mode
 on" state — closing the terminal terminates the loop. To restart
 later, the user re-runs the original watch command.
+
+---
 
 ### Integration paths (Claude Code, Codex, custom agents)
 
