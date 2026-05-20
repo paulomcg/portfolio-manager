@@ -58,27 +58,29 @@ export function EquityChart({
   // extend to the right edge of the viewport even when PM has been
   // halted for hours — Paulo sees a continuous line from his last
   // trade to "now" instead of a chart that ends mid-axis.
+  // We render the chart with a time-based numeric XAxis (epoch ms) so
+  // a single padded "now" point at a far-future timestamp actually
+  // extends the line to the right edge. With recharts' default
+  // categorical XAxis, every point gets equal-width spacing and the
+  // pad point is just one more category — invisible.
   const series = useMemo(() => {
-    let s = data
-    if (range !== "all" && data.length) {
-      const lastTs = new Date(data[data.length - 1].ts).getTime()
+    type Pt = EquityPoint & { tsMs: number }
+    let s: Pt[] = data.map((p) => ({ ...p, tsMs: new Date(p.ts).getTime() }))
+    if (range !== "all" && s.length) {
+      const lastMs = s[s.length - 1].tsMs
       const nowMs = Date.now()
-      // Anchor the window to "now" so the right edge is always
-      // the current moment regardless of when the last point landed.
-      const cutoffMs = Math.max(lastTs, nowMs) - RANGE_MS[range]
-      s = data.filter((p) => new Date(p.ts).getTime() >= cutoffMs)
+      const cutoffMs = Math.max(lastMs, nowMs) - RANGE_MS[range]
+      s = s.filter((p) => p.tsMs >= cutoffMs)
     }
     if (s.length) {
       const last = s[s.length - 1]
-      const lastMs = new Date(last.ts).getTime()
       const nowMs = Date.now()
-      // Only pad if the last cycle is older than a few seconds —
-      // otherwise the "now" point overlaps the real one.
-      if (nowMs - lastMs > 10_000) {
+      if (nowMs - last.tsMs > 10_000) {
         s = [
           ...s,
           {
             ts: new Date(nowMs).toISOString(),
+            tsMs: nowMs,
             equity_usd: last.equity_usd,
             drawdown_pct: last.drawdown_pct,
           },
@@ -87,6 +89,13 @@ export function EquityChart({
     }
     return s
   }, [data, range])
+
+  const xDomain = useMemo(() => {
+    if (!series.length) return ["auto", "auto"] as const
+    const firstMs = series[0].tsMs
+    const lastMs = series[series.length - 1].tsMs
+    return [firstMs, lastMs] as [number, number]
+  }, [series])
 
   const last = series[series.length - 1]?.equity_usd ?? initialEquity ?? 0
   const baseline = initialEquity ?? series[0]?.equity_usd ?? last
@@ -133,8 +142,11 @@ export function EquityChart({
           </defs>
           <CartesianGrid vertical={false} strokeDasharray="2 4" />
           <XAxis
-            dataKey="ts"
-            tickFormatter={(v) => fmtTsShort(v)}
+            dataKey="tsMs"
+            type="number"
+            scale="time"
+            domain={xDomain as [number, number] | readonly ["auto", "auto"]}
+            tickFormatter={(v) => fmtTsShort(new Date(v).toISOString())}
             tickLine={false}
             axisLine={false}
             minTickGap={48}
