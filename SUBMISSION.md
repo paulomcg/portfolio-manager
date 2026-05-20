@@ -24,10 +24,15 @@ position-sizing, drawdown halts, and observability — not just one slice.
 | Example strategies covering momentum, multi-source confirmation, and risk-managed memecoin rotation | `examples/strategies/` |
 | Same `decide()` runs in monitor, live, AND backtester contexts | demonstrated via the companion `strategy-backtester` skill |
 
-**Evidence:** the `smart_money_yolo` example in `examples/strategies/` ran
-live on 2026-05-20, fused three OnChainOS signal sources (smart-money
-tracker, KOL tracker, memepump migrations), and successfully gated entries
-behind a multi-source confirmation rule. See `examples/strategies/smart_money_yolo.py`.
+**Evidence:** `examples/strategies/` ships six clean strategy exemplars
+(buy_and_hold, weekly_dca, momentum_threshold, mtf_momentum, bollinger_mr,
+vol_targeted_momentum). Each is a pure `decide()` consumer of PM's `state`
+and `market_data`, demonstrating the contract works across DCA, momentum,
+and mean-reversion regimes. An experimental seventh strategy
+(`experiments/smart-money-yolo/`) intentionally lives outside `examples/`
+because it predates a planned `SignalFeed` adapter and currently violates
+the data-abstraction contract — see its README for the post-mortem and
+v2 design.
 
 ---
 
@@ -71,8 +76,8 @@ categorization, and a synthetic-executor fallback for tests / dry runs.
 | What | Where |
 |---|---|
 | OnChainOS swap adapter handling current response shape (`swapTxHash`, `fromAmount`/`toAmount` minimal units, `tokenUnitPrice`, `priceImpact`) + legacy shape (`txHash`, `destAmount`, `executionPriceUsd`) | `scripts/executor.py:419-505` (`_parse_swap_response`) |
-| Address case-preservation through to executor — Solana base58 is case-sensitive | `examples/strategies/smart_money_yolo.py` (commit `fcc8b65`) |
-| Re-buy cooldown after every sell to prevent dump-exit / re-entry whipsaws | `examples/strategies/smart_money_yolo.py` (commit `e566b8d`) |
+| Address case-preservation through to executor — Solana base58 is case-sensitive | commit `fcc8b65` (surfaced via experimental yolo strategy) |
+| Re-buy cooldown after every sell to prevent dump-exit / re-entry whipsaws | commit `e566b8d` (surfaced via experimental yolo strategy) |
 | Error categorization: `wallet_not_logged_in`, `cli_not_found`, `cli_timeout`, `execution_failed`, `cli_output_invalid` | `scripts/executor.py:350-365` |
 | Synthetic executor (`--executor synthetic`) for cap-enforcement demos without burning capital | `scripts/executor.py` |
 | Position ledger refresh AFTER strategy fills so the same cycle's rule pass sees the correct state | `scripts/watch.py:277-285` |
