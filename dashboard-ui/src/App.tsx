@@ -68,7 +68,6 @@ export default function App() {
   const state = snapshot?.state
   const safety = snapshot?.safety
   const metrics = snapshot?.metrics?.metrics ?? ({} as any)
-  const cycleCount = snapshot?.metrics?.cycle_count ?? 0
   const alerts = snapshot?.alerts_pending?.alerts ?? []
   const auditRows = snapshot?.audit?.rows ?? []
   const cash = state?.last_cycle?.positions?.cash_usd
@@ -95,7 +94,6 @@ export default function App() {
         <HeroMetrics
           state={state ?? ({} as any)}
           metrics={metrics}
-          cycleCount={cycleCount}
         />
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -115,11 +113,8 @@ export default function App() {
               <LineChartIcon className="size-3.5" />
               Equity curve
             </CardTitle>
-            <div
-              className="text-[10px] text-muted-foreground tabular-nums"
-              title="One data point per pm watch iteration"
-            >
-              {equity?.count ?? 0} updates
+            <div className="text-[10px] text-muted-foreground tabular-nums">
+              {equity?.count ?? 0} data points
             </div>
           </CardHeader>
           <CardContent className="px-3 pt-4 pb-3">

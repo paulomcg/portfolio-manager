@@ -15,30 +15,38 @@ interface ActiveRulesPanelProps {
   strategyLoaded: boolean
 }
 
-const RULE_META: Record<
-  string,
-  { label: string; icon: typeof TrendingDown; tone: string; describe: (r: RuleConfig) => string }
-> = {
+interface RuleMeta {
+  label: string
+  icon: typeof TrendingDown
+  tone: string
+  numberTone: string
+  describe: (r: RuleConfig) => string
+}
+
+const RULE_META: Record<string, RuleMeta> = {
   halt_on_drawdown: {
     label: "Halt on drawdown",
     icon: TrendingDown,
     tone: "border-destructive/40 text-destructive bg-destructive/5",
-    describe: (r) =>
-      `Stops the loop and exits every position when wallet drawdown from HWM exceeds ${pctStr(r.threshold_pct ?? r.threshold)}.`,
+    numberTone: "text-destructive",
+    describe: () =>
+      "Stops the loop and exits every position when wallet drawdown from HWM exceeds this.",
   },
   max_position_pct: {
     label: "Max position size",
     icon: Sliders,
     tone: "border-amber-500/40 text-amber-500 bg-amber-500/5",
-    describe: (r) =>
-      `Exits a position whenever its value exceeds ${pctStr(r.threshold_pct ?? r.threshold)} of total equity.`,
+    numberTone: "text-amber-500",
+    describe: () =>
+      "Exits a position whenever its value exceeds this fraction of total equity.",
   },
   trailing_stop: {
     label: "Trailing stop",
     icon: Activity,
     tone: "border-accent/50 text-accent bg-accent/5",
-    describe: (r) =>
-      `Exits a position when it drops ${pctStr(r.threshold_pct ?? r.threshold)} from its per-position high-water mark.`,
+    numberTone: "text-accent",
+    describe: () =>
+      "Exits a position when it drops this much from its per-position high-water mark.",
   },
 }
 
@@ -93,29 +101,29 @@ export function ActiveRulesPanel({
         ) : (
           <ul className="divide-y divide-border/60">
             {rules.map((rule, i) => {
-              const meta = RULE_META[rule.type as string] ?? {
-                label: rule.type,
+              const meta: RuleMeta = RULE_META[rule.type as string] ?? {
+                label: String(rule.type ?? "custom"),
                 icon: ListCheck,
                 tone: "border-border text-muted-foreground bg-muted/30",
+                numberTone: "text-foreground",
                 describe: () => "custom rule — see config for details",
               }
               const Icon = meta.icon
+              const threshold = pctStr(rule.threshold_pct ?? rule.threshold)
               return (
-                <li key={rule.id ?? `${rule.type}-${i}`} className="px-5 py-3">
-                  <div className="flex items-start gap-3">
+                <li key={rule.id ?? `${rule.type}-${i}`} className="px-5 py-4">
+                  <div className="flex items-start gap-4">
                     <div
                       className={cn(
-                        "rounded-md border p-1.5 mt-0.5",
+                        "rounded-md border p-1.5 mt-1",
                         meta.tone,
                       )}
                     >
-                      <Icon className="size-3.5" />
+                      <Icon className="size-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-medium text-sm">
-                          {meta.label}
-                        </div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <div className="font-medium text-sm">{meta.label}</div>
                         <Badge
                           variant="outline"
                           className="font-mono text-[10px]"
@@ -123,7 +131,7 @@ export function ActiveRulesPanel({
                           {rule.id ?? rule.type}
                         </Badge>
                       </div>
-                      <p className="text-[12px] text-muted-foreground mt-1">
+                      <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
                         {meta.describe(rule)}
                       </p>
                       {rule.scope && (
@@ -131,6 +139,23 @@ export function ActiveRulesPanel({
                           scope: {rule.scope}
                         </div>
                       )}
+                    </div>
+                    <div
+                      className={cn(
+                        "flex flex-col items-end shrink-0 min-w-[80px]",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "text-3xl font-bold tabular-nums leading-none",
+                          meta.numberTone,
+                        )}
+                      >
+                        {threshold}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70 mt-1">
+                        threshold
+                      </div>
                     </div>
                   </div>
                 </li>

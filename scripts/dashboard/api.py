@@ -147,13 +147,30 @@ def get_fills(
                 continue
             if asset and (f.get("asset") or "").upper() != asset.upper():
                 continue
+            # The executor's `fill_price_usd` is the DESTINATION token's
+            # unit price. For a buy (USDC→ASSET), that's ASSET's price —
+            # the meaningful fill price. For a sell (ASSET→USDC), that's
+            # $1 (USDC), which is useless. Compute the SOURCE-side price
+            # for sells: gross_proceeds_usd / qty_swapped = USDC per unit
+            # of the asset we sold.
+            action = (f.get("action") or "").lower()
+            raw_fill = f.get("fill_price_usd")
+            qty = f.get("qty_swapped") or 0
+            gross = f.get("gross_proceeds_usd") or 0
+            display_fill_price = raw_fill
+            if action in ("sell", "exit", "trim") and qty:
+                try:
+                    display_fill_price = abs(float(gross)) / abs(float(qty))
+                except (TypeError, ValueError, ZeroDivisionError):
+                    display_fill_price = raw_fill
             out.append({
                 "ts_utc": cycle_ts,
                 "cycle_index": cycle_index,
                 "action": f.get("action"),
                 "asset": f.get("asset"),
                 "qty_swapped": f.get("qty_swapped"),
-                "fill_price_usd": f.get("fill_price_usd"),
+                "fill_price_usd": display_fill_price,
+                "fill_price_usd_raw": raw_fill,  # original (destination unit price)
                 "gross_proceeds_usd": f.get("gross_proceeds_usd"),
                 "fees_usd": f.get("fees_usd"),
                 "slippage_usd": f.get("slippage_usd"),

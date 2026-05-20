@@ -5,17 +5,16 @@ import { fmtUsd, fmtPct, fmtNum } from "@/lib/format"
 interface HeroMetricsProps {
   state: StatePayload
   metrics: MetricsPayload
-  cycleCount: number
 }
 
-export function HeroMetrics({ state, metrics, cycleCount }: HeroMetricsProps) {
+export function HeroMetrics({ state, metrics }: HeroMetricsProps) {
   const equity = state.last_cycle?.positions?.total_equity_usd ?? metrics.final_equity_usd ?? 0
   const ret = metrics.total_return_pct ?? 0
   const dd = metrics.max_drawdown_pct ?? 0
   const sharpe = metrics.sharpe ?? 0
 
   return (
-    <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       <MetricCard
         label="Total equity"
         value={fmtUsd(equity)}
@@ -51,12 +50,6 @@ export function HeroMetrics({ state, metrics, cycleCount }: HeroMetricsProps) {
         value={fmtNum(metrics.sortino ?? 0, 2)}
         tone={(metrics.sortino ?? 0) >= 1 ? "positive" : "default"}
         size="lg"
-      />
-      <MetricCard
-        label="Updates"
-        value={cycleCount}
-        size="lg"
-        hint={metrics.bars > 0 ? `${metrics.bars} data pts` : "pm watch ticks"}
       />
     </section>
   )

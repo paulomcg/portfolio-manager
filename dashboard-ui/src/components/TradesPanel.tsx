@@ -10,10 +10,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowDownLeft, ArrowUpRight, Repeat } from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, ExternalLink, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { FillRow } from "@/hooks/useFills"
 import { fmtTsShort, fmtUsdSigned, fmtUsd, fmtQty } from "@/lib/format"
+import { txExplorerUrl } from "@/lib/explorer"
 
 interface TradesPanelProps {
   fills: FillRow[]
@@ -69,6 +70,12 @@ export function TradesPanel({ fills }: TradesPanelProps) {
                   const action = (f.action || "").toLowerCase()
                   const rpnl = f.realized_pnl_usd ?? 0
                   const tx = f.tx_hash || ""
+                  const explorer = txExplorerUrl(tx)
+                  // Fill price the user cares about: source-side
+                  // (price per unit of the asset traded). The API
+                  // already corrects this for sells; buys use it
+                  // directly.
+                  const px = f.fill_price_usd
                   return (
                     <tr key={`${f.ts_utc}-${i}`} className="hover:bg-muted/30">
                       <td className="px-4 py-2 text-muted-foreground tabular-nums whitespace-nowrap">
@@ -91,7 +98,7 @@ export function TradesPanel({ fills }: TradesPanelProps) {
                         {fmtQty(f.qty_swapped ?? 0)}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
-                        {f.fill_price_usd != null ? fmtUsd(f.fill_price_usd) : "—"}
+                        {px != null ? fmtUsd(px) : "—"}
                       </td>
                       <td
                         className={cn(
@@ -104,7 +111,24 @@ export function TradesPanel({ fills }: TradesPanelProps) {
                         {rpnl !== 0 ? fmtUsdSigned(rpnl) : "—"}
                       </td>
                       <td className="px-4 py-2 font-mono text-[10px] text-muted-foreground">
-                        {tx ? `${tx.slice(0, 6)}…${tx.slice(-4)}` : "—"}
+                        {tx ? (
+                          explorer ? (
+                            <a
+                              href={explorer}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 hover:text-foreground hover:underline transition-colors"
+                              title={tx}
+                            >
+                              {tx.slice(0, 6)}…{tx.slice(-4)}
+                              <ExternalLink className="size-3" />
+                            </a>
+                          ) : (
+                            <span title={tx}>{tx.slice(0, 6)}…{tx.slice(-4)}</span>
+                          )
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     </tr>
                   )

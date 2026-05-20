@@ -11,7 +11,11 @@ export interface FillRow {
   action: "buy" | "sell" | "exit" | "trim" | string | null
   asset: string | null
   qty_swapped: number | null
+  // fill_price_usd is the SOURCE-side price (USDC received per unit
+  // of the asset sold, for sells) — corrected by the API. The
+  // executor's raw destination-unit-price is in fill_price_usd_raw.
   fill_price_usd: number | null
+  fill_price_usd_raw?: number | null
   gross_proceeds_usd: number | null
   fees_usd: number | null
   slippage_usd: number | null
