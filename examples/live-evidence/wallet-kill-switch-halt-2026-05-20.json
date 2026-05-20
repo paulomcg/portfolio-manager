@@ -1,0 +1,346 @@
+[
+  {
+    "cycle_index": 54,
+    "ts_utc": "2026-05-20T13:09:33.958344+00:00",
+    "positions": {
+      "total_equity_usd": 64.42,
+      "high_water_mark_usd": 107.38,
+      "drawdown_from_hwm_pct": 40.0043,
+      "cash_usd": 35.21,
+      "n_positions": 2,
+      "positions": [
+        {
+          "asset": "SOL",
+          "chain": "solana",
+          "address": "",
+          "qty": 0.25994698,
+          "mark_price_usd": 84.96,
+          "value_usd": 22.09,
+          "cost_basis_usd": 22.09,
+          "avg_entry_price_usd": 84.96,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 23.97,
+          "drawdown_from_hwm_pct": 7.8636,
+          "source": "auto"
+        },
+        {
+          "asset": "Pizza",
+          "chain": "solana",
+          "address": "5RU48fRYGeCG7WeQsp2gL5FUz4i4oojHxJaJaCjgtxhu",
+          "qty": 364627.416215,
+          "mark_price_usd": 1.954e-05,
+          "value_usd": 7.12,
+          "cost_basis_usd": 7.12,
+          "avg_entry_price_usd": 1.954e-05,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 25.86,
+          "drawdown_from_hwm_pct": 72.4522,
+          "source": "auto"
+        }
+      ],
+      "warnings": []
+    },
+    "kill_switch": {
+      "wallet_baseline_equity_usd": 68.35,
+      "wallet_current_equity_usd": 64.42,
+      "wallet_loss_from_baseline_usd": 3.93,
+      "max_wallet_loss_usd": 10.0
+    },
+    "strategy_actions_count": 1,
+    "fills": [],
+    "errors": [
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "strategy"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed missing source token address for SOL",
+        "source": "rule"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      }
+    ]
+  },
+  {
+    "cycle_index": 55,
+    "ts_utc": "2026-05-20T13:10:10.974733+00:00",
+    "positions": {
+      "total_equity_usd": 70.21,
+      "high_water_mark_usd": 107.38,
+      "drawdown_from_hwm_pct": 34.6122,
+      "cash_usd": 35.21,
+      "n_positions": 2,
+      "positions": [
+        {
+          "asset": "SOL",
+          "chain": "solana",
+          "address": "",
+          "qty": 0.25994698,
+          "mark_price_usd": 84.95,
+          "value_usd": 22.08,
+          "cost_basis_usd": 22.08,
+          "avg_entry_price_usd": 84.95,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 23.97,
+          "drawdown_from_hwm_pct": 7.8744,
+          "source": "auto"
+        },
+        {
+          "asset": "Pizza",
+          "chain": "solana",
+          "address": "5RU48fRYGeCG7WeQsp2gL5FUz4i4oojHxJaJaCjgtxhu",
+          "qty": 364627.416215,
+          "mark_price_usd": 3.543e-05,
+          "value_usd": 12.92,
+          "cost_basis_usd": 12.92,
+          "avg_entry_price_usd": 3.543e-05,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 25.86,
+          "drawdown_from_hwm_pct": 50.037,
+          "source": "auto"
+        }
+      ],
+      "warnings": []
+    },
+    "kill_switch": {
+      "wallet_baseline_equity_usd": 68.35,
+      "wallet_current_equity_usd": 70.21,
+      "wallet_loss_from_baseline_usd": -1.86,
+      "max_wallet_loss_usd": 10.0
+    },
+    "strategy_actions_count": 1,
+    "fills": [],
+    "errors": [
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "strategy"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      }
+    ]
+  },
+  {
+    "cycle_index": 56,
+    "ts_utc": "2026-05-20T13:10:47.480578+00:00",
+    "positions": {
+      "total_equity_usd": 70.21,
+      "high_water_mark_usd": 107.38,
+      "drawdown_from_hwm_pct": 34.6122,
+      "cash_usd": 35.21,
+      "n_positions": 2,
+      "positions": [
+        {
+          "asset": "SOL",
+          "chain": "solana",
+          "address": "",
+          "qty": 0.25994698,
+          "mark_price_usd": 84.93,
+          "value_usd": 22.08,
+          "cost_basis_usd": 22.08,
+          "avg_entry_price_usd": 84.93,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 23.97,
+          "drawdown_from_hwm_pct": 7.8961,
+          "source": "auto"
+        },
+        {
+          "asset": "Pizza",
+          "chain": "solana",
+          "address": "5RU48fRYGeCG7WeQsp2gL5FUz4i4oojHxJaJaCjgtxhu",
+          "qty": 364627.416215,
+          "mark_price_usd": 3.543e-05,
+          "value_usd": 12.92,
+          "cost_basis_usd": 12.92,
+          "avg_entry_price_usd": 3.543e-05,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 25.86,
+          "drawdown_from_hwm_pct": 50.037,
+          "source": "auto"
+        }
+      ],
+      "warnings": []
+    },
+    "kill_switch": {
+      "wallet_baseline_equity_usd": 68.35,
+      "wallet_current_equity_usd": 70.21,
+      "wallet_loss_from_baseline_usd": -1.86,
+      "max_wallet_loss_usd": 10.0
+    },
+    "strategy_actions_count": 1,
+    "fills": [],
+    "errors": [
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "strategy"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      }
+    ]
+  },
+  {
+    "cycle_index": 57,
+    "ts_utc": "2026-05-20T13:11:23.356743+00:00",
+    "positions": {
+      "total_equity_usd": 70.2,
+      "high_water_mark_usd": 107.38,
+      "drawdown_from_hwm_pct": 34.6215,
+      "cash_usd": 35.21,
+      "n_positions": 2,
+      "positions": [
+        {
+          "asset": "SOL",
+          "chain": "solana",
+          "address": "",
+          "qty": 0.25994698,
+          "mark_price_usd": 84.89,
+          "value_usd": 22.07,
+          "cost_basis_usd": 22.07,
+          "avg_entry_price_usd": 84.89,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 23.97,
+          "drawdown_from_hwm_pct": 7.9395,
+          "source": "auto"
+        },
+        {
+          "asset": "Pizza",
+          "chain": "solana",
+          "address": "5RU48fRYGeCG7WeQsp2gL5FUz4i4oojHxJaJaCjgtxhu",
+          "qty": 364627.416215,
+          "mark_price_usd": 3.543e-05,
+          "value_usd": 12.92,
+          "cost_basis_usd": 12.92,
+          "avg_entry_price_usd": 3.543e-05,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 25.86,
+          "drawdown_from_hwm_pct": 50.037,
+          "source": "auto"
+        }
+      ],
+      "warnings": []
+    },
+    "kill_switch": {
+      "wallet_baseline_equity_usd": 68.35,
+      "wallet_current_equity_usd": 70.2,
+      "wallet_loss_from_baseline_usd": -1.85,
+      "max_wallet_loss_usd": 10.0
+    },
+    "strategy_actions_count": 1,
+    "fills": [],
+    "errors": [
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "strategy"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      }
+    ]
+  },
+  {
+    "cycle_index": 58,
+    "ts_utc": "2026-05-20T13:11:58.691052+00:00",
+    "positions": {
+      "total_equity_usd": 57.28,
+      "high_water_mark_usd": 107.38,
+      "drawdown_from_hwm_pct": 46.6536,
+      "cash_usd": 35.21,
+      "n_positions": 2,
+      "positions": [
+        {
+          "asset": "SOL",
+          "chain": "solana",
+          "address": "",
+          "qty": 0.25994698,
+          "mark_price_usd": 84.89,
+          "value_usd": 22.07,
+          "cost_basis_usd": 22.07,
+          "avg_entry_price_usd": 84.89,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 23.97,
+          "drawdown_from_hwm_pct": 7.9395,
+          "source": "auto"
+        },
+        {
+          "asset": "Pizza",
+          "chain": "solana",
+          "address": "5RU48fRYGeCG7WeQsp2gL5FUz4i4oojHxJaJaCjgtxhu",
+          "qty": 364627.416215,
+          "mark_price_usd": 0.0,
+          "value_usd": 0.0,
+          "cost_basis_usd": 0.0,
+          "avg_entry_price_usd": 0.0,
+          "unrealized_pnl_usd": 0.0,
+          "realized_pnl_usd": 0.0,
+          "high_water_mark_usd": 25.86,
+          "drawdown_from_hwm_pct": 100.0,
+          "source": "auto"
+        }
+      ],
+      "warnings": []
+    },
+    "kill_switch": {
+      "wallet_baseline_equity_usd": 68.35,
+      "wallet_current_equity_usd": 57.28,
+      "wallet_loss_from_baseline_usd": 11.07,
+      "max_wallet_loss_usd": 10.0
+    },
+    "strategy_actions_count": 1,
+    "fills": [],
+    "errors": [
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "strategy"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed missing source token address for SOL",
+        "source": "rule"
+      },
+      {
+        "kind": "executor_error",
+        "detail": "execution_failed }",
+        "source": "rule"
+      },
+      {
+        "kind": "watch_halt",
+        "detail": "wallet_loss_cap_exceeded baseline=$68.35 current=$57.28 loss=$11.07 cap=$10.00"
+      }
+    ]
+  }
+]
