@@ -1,24 +1,25 @@
-"""YOLO strategy — follow smart-money buy clusters on Solana.
+"""YOLO strategy — actively trade on smart-money signals.
 
-Polls `onchainos tracker activities` for the last N smart-money BUY
-transactions on Solana, aggregates by token, ranks by (distinct wallet
-count, signal count), and all-ins on the top candidate that clears the
-liquidity filter. Rotates when a different token surfaces with strictly
-more distinct buying wallets.
+What this strategy does each PM cycle (60s):
 
-Inputs come from outside `market_data` — this strategy doesn't use
-historical OHLCV. Backtesting it requires a different harness (signal
-replay), so it's live-only.
+  1) Pull recent smart-money BUYS and SELLS from `onchainos tracker`.
+  2) For each currently-held position:
+       - If the unrealized PnL is at or above TAKE_PROFIT_PCT → SELL all.
+       - If the unrealized PnL is at or below STOP_LOSS_PCT → SELL all.
+       - If ≥ DUMP_WALLETS_THRESHOLD distinct smart-money wallets are
+         actively SELLING this token in the SIGNAL_WINDOW_MIN window → SELL all.
+  3) Rank buy-side candidates (≥ MIN_WALLETS distinct smart-money buyers,
+     mcap ≥ MIN_MARKET_CAP_USD, age ≤ SIGNAL_WINDOW_MIN).
+  4) For each candidate not currently held, if we're under MAX_POSITIONS
+     and have cash ≥ ENTRY_USD, OPEN a new position.
 
-Hard rules:
-  - Only acts on Solana chainIndex 501 (contest-eligible).
-  - Requires ≥ MIN_WALLETS distinct smart-money buyers in the last
-    SIGNAL_WINDOW_MIN minutes.
-  - Requires market_cap_usd ≥ MIN_MARKET_CAP_USD for slippage safety.
-  - Trailing-stop / max-loss / position-cap is the rule-engine's job
-    (PM's rules.yaml). Strategy emits sells only on rotation.
+Multi-position: up to MAX_POSITIONS concurrent positions, each ENTRY_USD.
+PM's rule engine (trailing-stop, halt-on-drawdown, max-position-pct) and
+the `--max-loss-usd` kill switch are the safety floor under everything
+this strategy does.
 
-Conservative defaults — TUNE these before going live with real $$.
+Live-only — no backtest path. Inputs come from CLI subprocess to the
+tracker; market_data is unused.
 """
 
 from __future__ import annotations
@@ -31,29 +32,38 @@ from typing import Any
 
 # ---------------- tunables ----------------
 CHAIN_INDEX = 501  # Solana
-ENTRY_USD = 25.0   # per-position notional; sized for a $80 bag
-MIN_WALLETS = 2    # smart-money buyer threshold (2 = looser; raise to 3 for stricter)
-MIN_VOLUME_USD = 500  # per-trade min for the tracker query
-MIN_MARKET_CAP_USD = 250_000  # liquidity floor
-SIGNAL_WINDOW_MIN = 240  # 4h — broad enough to catch overnight signal lulls
-SIGNAL_CACHE_SEC = 60   # don't re-poll the tracker more often than this
+
+ENTRY_USD = 25.0
+MAX_POSITIONS = 3        # concurrent open positions cap
+
+MIN_WALLETS = 2          # distinct smart-money BUYERS required to enter
+DUMP_WALLETS_THRESHOLD = 2   # distinct smart-money SELLERS required to exit
+MIN_VOLUME_USD = 500
+MIN_MARKET_CAP_USD = 250_000
+SIGNAL_WINDOW_MIN = 240
+SIGNAL_CACHE_SEC = 50    # < PM cycle (60s) so cache refreshes once per cycle
+
+TAKE_PROFIT_PCT = 0.20   # +20% unrealized → cash out
+STOP_LOSS_PCT = -0.15    # -15% unrealized → cut
+
+STABLES_AND_SKIP = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD", "SOL"}
+
 CLI_BIN = "onchainos"
 
-# Caching to avoid hammering the tracker API every PM cycle.
-_signal_cache: dict[str, Any] = {"ts": 0.0, "ranked": []}
+# Per-process caches (PM watch is a long-running process, so caches persist).
+_buy_cache: dict[str, Any] = {"ts": 0.0, "ranked": []}
+_sell_cache: dict[str, Any] = {"ts": 0.0, "by_addr": {}}
 
 
-def _poll_signals() -> list[dict[str, Any]]:
-    """Subprocess the tracker, aggregate by token, return ranked candidates."""
-    now = time.time()
-    if now - _signal_cache["ts"] < SIGNAL_CACHE_SEC and _signal_cache["ranked"]:
-        return _signal_cache["ranked"]
+# ---------------- signal helpers ----------------
 
+def _poll_tracker(trade_type: int) -> list[dict[str, Any]]:
+    """Subprocess `onchainos tracker activities` and return raw trades."""
     argv = [
         CLI_BIN, "tracker", "activities",
         "--tracker-type", "smart_money",
         "--chain", "solana",
-        "--trade-type", "1",  # buys
+        "--trade-type", str(trade_type),
         "--min-volume", str(int(MIN_VOLUME_USD)),
     ]
     try:
@@ -68,15 +78,14 @@ def _poll_signals() -> list[dict[str, Any]]:
         payload = json.loads(res.stdout)
     except json.JSONDecodeError:
         return []
+    return ((payload.get("data") or {}).get("trades")) or []
 
-    trades = ((payload.get("data") or {}).get("trades")) or []
-    # Approximate USD valuation (quoteTokenAmount in SOL × ~SOL_USD).
-    # Live mode could replace this with a real SOL price feed; for now a
-    # rough constant is OK because we sort by wallet count, not USD.
+
+def _aggregate(trades: list[dict[str, Any]], window_min: int) -> dict[str, dict[str, Any]]:
+    """Aggregate trades by tokenContractAddress over the freshness window."""
+    now_ms = int(time.time() * 1000)
+    window_ms = window_min * 60 * 1000
     SOL_USD = float(os.environ.get("YOLO_SOL_USD", "85"))
-    now_ms = int(now * 1000)
-    window_ms = SIGNAL_WINDOW_MIN * 60 * 1000
-
     agg: dict[str, dict[str, Any]] = {}
     for t in trades:
         addr = t.get("tokenContractAddress")
@@ -84,15 +93,13 @@ def _poll_signals() -> list[dict[str, Any]]:
             continue
         if str(t.get("chainIndex") or "") != str(CHAIN_INDEX):
             continue
-        ts_ms = int(t.get("tradeTime") or 0)
-        if ts_ms <= 0 or (now_ms - ts_ms) > window_ms:
+        ts = int(t.get("tradeTime") or 0)
+        if ts <= 0 or (now_ms - ts) > window_ms:
             continue
         try:
             mcap = float(t.get("marketCap") or 0)
         except (TypeError, ValueError):
             mcap = 0.0
-        if mcap < MIN_MARKET_CAP_USD:
-            continue
         a = agg.setdefault(addr, {
             "address": addr,
             "symbol": t.get("tokenSymbol") or "?",
@@ -105,14 +112,26 @@ def _poll_signals() -> list[dict[str, Any]]:
         })
         a["wallets"].add(t.get("walletAddress"))
         a["count"] += 1
+        a["mcap"] = max(a["mcap"], mcap)
         qty = float(t.get("quoteTokenAmount") or 0)
         qsym = (t.get("quoteTokenSymbol") or "").upper()
         a["usd"] += qty * (SOL_USD if qsym in ("SOLANA", "SOL", "WSOL") else 1.0)
-        a["last_seen"] = max(a["last_seen"], ts_ms)
+        a["last_seen"] = max(a["last_seen"], ts)
+    return agg
 
+
+def _ranked_buys() -> list[dict[str, Any]]:
+    """Cached top buy-side candidates."""
+    now = time.time()
+    if now - _buy_cache["ts"] < SIGNAL_CACHE_SEC and _buy_cache["ranked"]:
+        return _buy_cache["ranked"]
+    trades = _poll_tracker(trade_type=1)
+    agg = _aggregate(trades, SIGNAL_WINDOW_MIN)
     ranked: list[dict[str, Any]] = []
     for addr, a in agg.items():
         if len(a["wallets"]) < MIN_WALLETS:
+            continue
+        if a["mcap"] < MIN_MARKET_CAP_USD:
             continue
         ranked.append({
             "address": addr,
@@ -128,79 +147,119 @@ def _poll_signals() -> list[dict[str, Any]]:
         key=lambda x: (x["wallet_count"], x["signal_count"], x["usd_volume"]),
         reverse=True,
     )
-
-    _signal_cache["ts"] = now
-    _signal_cache["ranked"] = ranked
+    _buy_cache["ts"] = now
+    _buy_cache["ranked"] = ranked
     return ranked
 
 
-def _current_position(state: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the strategy's active rotation slot — a non-stable position with
-    a known token contract address (i.e., an SPL token we can sell via swap).
+def _sell_pressure_by_addr() -> dict[str, int]:
+    """Cached map of {tokenContractAddress: distinct_seller_count} for dumps."""
+    now = time.time()
+    if now - _sell_cache["ts"] < SIGNAL_CACHE_SEC and _sell_cache["by_addr"]:
+        return _sell_cache["by_addr"]
+    trades = _poll_tracker(trade_type=2)
+    agg = _aggregate(trades, SIGNAL_WINDOW_MIN)
+    by_addr: dict[str, int] = {a["address"].lower(): len(a["wallets"]) for a in agg.values()}
+    _sell_cache["ts"] = now
+    _sell_cache["by_addr"] = by_addr
+    return by_addr
 
-    Skips positions without a contract address:
-      - Native SOL has no address; selling it would require wrapping. Leave it
-        alone, it acts as a passive baseline.
-      - Brand-new positions from this very cycle's fill (PM's
-        _apply_fill_to_state initializes address=None and the next wallet
-        poll backfills it). Skipping avoids attempting a sell with no source
-        token address — which fails the executor's preflight.
-    """
-    stables = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD", "SOL"}
+
+# ---------------- position helpers ----------------
+
+def _strategy_held(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Strategy-tradable positions = SPL tokens with a known contract address."""
+    out: list[dict[str, Any]] = []
     for p in state.get("positions", []) or []:
         sym = (p.get("asset") or "").upper()
-        if sym in stables:
+        if sym in STABLES_AND_SKIP:
             continue
         if not (p.get("address") or "").strip():
-            continue  # no contract address → not strategy-tradable
+            continue
         if float(p.get("qty", 0)) > 0:
-            return p
-    return None
+            out.append(p)
+    return out
 
 
-def decide(state, market_data):  # noqa: ARG001 — market_data unused (signals come from CLI)
-    ranked = _poll_signals()
-    if not ranked:
-        return []
+def _unrealized_pct(p: dict[str, Any]) -> float | None:
+    """Unrealized PnL % vs cost basis, or None if cost basis unknown."""
+    cost = float(p.get("cost_basis_usd") or 0)
+    if cost <= 0:
+        return None
+    pnl = float(p.get("unrealized_pnl_usd") or 0)
+    return pnl / cost
 
-    top = ranked[0]
-    have = _current_position(state)
 
-    if have is None:
-        # No position — enter the top candidate if we can afford it.
-        if state.get("cash_usd", 0) < ENTRY_USD:
-            return []
-        return [{
-            "action": "buy",
-            "asset": top["symbol"],
-            "amount_usd": ENTRY_USD,
-            "address": top["address"],
-            "chain": "solana",
-        }]
+# ---------------- main entry ----------------
 
-    # Holding something — only rotate if a DIFFERENT token has strictly more
-    # distinct wallets buying right now.
-    held_addr = (have.get("address") or "").lower()
-    if held_addr == top["address"].lower():
-        return []  # already in the top candidate
+def decide(state, market_data):  # noqa: ARG001 — market_data unused
+    cash = float(state.get("cash_usd", 0))
+    held = _strategy_held(state)
+    actions: list[dict[str, Any]] = []
 
-    # Find the held position's current rank for context.
-    held_rank = next(
-        (r for r in ranked if r["address"].lower() == held_addr),
-        None,
-    )
-    held_wallets = held_rank["wallet_count"] if held_rank else 0
-    if top["wallet_count"] <= held_wallets:
-        return []  # not enough edge to justify rotation churn
+    # 1) Check exits on every held position.
+    sell_pressure = _sell_pressure_by_addr()
+    sold_addrs: set[str] = set()
+    for p in held:
+        addr_lower = (p["address"] or "").lower()
+        pct = _unrealized_pct(p)
 
-    # Rotate: exit current → buy new.
-    return [
-        {"action": "sell", "asset": have["asset"], "sell_all": True},
-        {
-            "action": "buy",
-            "asset": top["symbol"],
-            "amount_usd": ENTRY_USD,
-            "address": top["address"],
-            "chain": "solana",
-        },
+        exit_reason: str | None = None
+        if pct is not None and pct >= TAKE_PROFIT_PCT:
+            exit_reason = "take_profit"
+        elif pct is not None and pct <= STOP_LOSS_PCT:
+            exit_reason = "stop_loss"
+        elif sell_pressure.get(addr_lower, 0) >= DUMP_WALLETS_THRESHOLD:
+            exit_reason = "smart_money_dump"
+
+        if exit_reason:
+            actions.append({
+                "action": "sell",
+                "asset": p["asset"],
+                "sell_all": True,
+                "reason": exit_reason,
+            })
+            sold_addrs.add(addr_lower)
+
+    # 2) Find buy candidates we don't already hold (and aren't selling).
+    #    Also exclude any token with active dump pressure — smart money
+    #    selling at the same time as buying is a contradicting signal we
+    #    won't fade into.
+    held_addrs = {(p["address"] or "").lower() for p in held} - sold_addrs
+    ranked = _ranked_buys()
+    new_candidates = [
+        c for c in ranked
+        if c["address"].lower() not in held_addrs
+        and sell_pressure.get(c["address"].lower(), 0) < DUMP_WALLETS_THRESHOLD
     ]
+
+    # 3) How many positions will we hold after the exits this cycle?
+    surviving_positions = len(held) - len(sold_addrs)
+    open_slots = MAX_POSITIONS - surviving_positions
+    if open_slots <= 0:
+        return actions
+
+    # 4) Available cash, including the proceeds from sells we're about to do.
+    sold_value = sum(
+        float(p.get("value_usd", 0))
+        for p in held
+        if (p["address"] or "").lower() in sold_addrs
+    )
+    available_cash = cash + sold_value
+
+    for c in new_candidates:
+        if open_slots <= 0:
+            break
+        if available_cash < ENTRY_USD:
+            break
+        actions.append({
+            "action": "buy",
+            "asset": c["symbol"],
+            "amount_usd": ENTRY_USD,
+            "address": c["address"],
+            "chain": "solana",
+        })
+        open_slots -= 1
+        available_cash -= ENTRY_USD
+
+    return actions
