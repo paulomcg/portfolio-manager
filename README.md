@@ -1,5 +1,10 @@
 # portfolio-manager
 
+> **OKX Agentic Trading Contest, Skill Quality Award submission** — see
+> [`SUBMISSION.md`](./SUBMISSION.md) for the explicit mapping of features
+> to the five evaluation criteria (strategy completeness, risk control,
+> execution reliability, user safety/onboarding, observability).
+
 **A complete agentic trading agent for the OKX Agentic Wallet.** Owns the
 **strategy** (a Python `decide()` callback the agent authors — answers "when
 to open"), the **rules** (drawdown halts / position caps / trailing stops —
