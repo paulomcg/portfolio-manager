@@ -60,17 +60,24 @@ class TestStaticRoutes:
         assert ct.startswith("text/html")
         assert "<title>portfolio-manager" in body
 
-    def test_style_css_served(self, dashboard):
+    def test_vite_assets_served(self, dashboard):
+        """The Vite-built UI ships hashed bundles under /assets/. We
+        scan the served index.html for the asset references and verify
+        each comes back 200 with the right content-type. Replaces the
+        old test_style_css_served / test_app_js_served pair from the
+        pre-React static layout."""
+        import re
         base, _ = dashboard
-        status, ct, _ = _request(f"{base}/style.css")
-        assert status == 200
-        assert ct == "text/css"
-
-    def test_app_js_served(self, dashboard):
-        base, _ = dashboard
-        status, ct, _ = _request(f"{base}/app.js")
-        assert status == 200
-        assert ct in ("text/javascript", "application/javascript")
+        _, _, idx_body = _request(f"{base}/")
+        urls = re.findall(r'/assets/[\w./-]+', idx_body)
+        assert urls, "index.html should reference at least one hashed asset bundle"
+        for url in set(urls):
+            status, ct, _ = _request(f"{base}{url}")
+            assert status == 200, f"{url} returned {status}"
+            if url.endswith(".css"):
+                assert ct == "text/css"
+            elif url.endswith(".js"):
+                assert ct in ("text/javascript", "application/javascript")
 
     def test_unknown_path_404(self, dashboard):
         base, _ = dashboard

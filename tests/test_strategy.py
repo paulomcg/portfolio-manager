@@ -265,11 +265,15 @@ class TestExampleStrategies:
         import pandas as pd
 
         invoc = strategy.load(self.EXAMPLES / "momentum_threshold.py")
-        # 21 bars of climbing close: 100 → 110, +10% > 5% threshold
-        history = pd.DataFrame({"c": [100 + i * 0.5 for i in range(22)]})
+        # Strategy uses LOOKBACK_BARS=5 and ENTRY_THRESHOLD=+5%; the
+        # rolling return over the LAST 5 bars must clear +5%, not the
+        # full series. Build a flat baseline then a +10% sprint over
+        # the last 5 bars so rolling_return crosses the threshold.
+        closes = [100.0] * 17 + [100.0, 102.0, 104.0, 106.0, 110.5]
+        history = pd.DataFrame({"c": closes})
         actions, _ = invoc.invoke(
             {"cycle_index": 0, "cash_usd": 1000.0, "positions": []},
             {"WSOL": {"history": history}},
         )
-        assert len(actions) == 1
+        assert len(actions) == 1, f"expected 1 buy action, got {actions}"
         assert actions[0]["action"] == "buy"
