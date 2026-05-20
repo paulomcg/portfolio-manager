@@ -5,9 +5,10 @@ the **strategy** (a Python `decide()` callback the agent authors —
 "when to open"), the **rules** (drawdown halts, position caps,
 trailing stops — "when to exit"), the **executor** (real swaps via
 OnChainOS or a built-in synthetic engine for paper-trading), the
-**alerts queue**, the **append-only audit log**, and the **metrics
+**alerts queue**, the **append-only audit log**, the **metrics
 engine** (Sharpe / Sortino / max DD / win rate computed locally from
-any audit).
+any audit), and a **live web dashboard** for at-a-glance
+observability.
 
 The same `.py` strategy file works in live mode AND against historical
 OHLCV via the companion [`strategy-backtester`](https://github.com/paulomcg/strategy-backtester)
@@ -77,6 +78,16 @@ JSON payload if the user wants to chart it themselves.
 
 ---
 
+> **"Open the dashboard."**
+
+The agent starts the dashboard server (bound to localhost or the
+host's Tailscale IP for cross-device access). The user opens it in
+any browser — phone, laptop, second monitor — and sees the whole
+state of the trading agent at a glance. See the [Dashboard](#dashboard)
+section below.
+
+---
+
 > **"Backtest this same strategy on a year of historical data."**
 
 The strategy `.py` the user authored for live mode is the same
@@ -93,6 +104,77 @@ same drawdown methodology, same audit-log format.
 Agent kills the PM watch process. There is no persisted "live mode
 on" state — closing the terminal terminates the loop. To restart
 later, the user re-runs the original watch command.
+
+---
+
+## Dashboard
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ● portfolio-manager  wallet: 8Pv2y2…nekP ↗   updated 14:32 · 🔔3 │
+├──────────────────────────────────────────────────────────────────┤
+│  Equity      Return    Max DD    Sharpe    Sortino               │
+│  $1,176.02   +17.96%   2.13%     8.89      4.36                  │
+├──────────────────────────────────────────────────────────────────┤
+│  Kill switch                  │  Active rules                    │
+│  realized:   $0.00 / $15      │  Halt-on-drawdown         30%   │
+│  wallet eq:  -$1.87 / $10     │  Max position size        60%   │
+│                                │  Trailing stop            25%   │
+├──────────────────────────────────────────────────────────────────┤
+│  Equity curve                          [24H] [7D] [1M] [ALL]    │
+│                                              ╱╲                  │
+│                                         ╱╲╱╲╱  ╲╲   ⎯⎯⎯⎯⎯⎯⎯⎯   │
+│                                    ╱╲╱╲╱        ╲╱               │
+│                              ╱╲╱╲╱                               │
+│                         ╱╲╱╲╱                                    │
+│                    ╱╲╱╲╱                                         │
+├──────────────────────────────────────────────────────────────────┤
+│  Positions                                                       │
+│  WSOL    9.3 @ $133     $1,238    +12.3%    drawdown 2.1%       │
+│  USDC                   $0                                       │
+├──────────────────────────────────────────────────────────────────┤
+│  Trades                                              23 fills    │
+│  13:07  sell  PERP    320,978   px $0.0000656  +$3.24   ↗      │
+│  13:06  buy   PERP    320,978   px $0.0000700           ↗      │
+│  12:27  sell  PERP    245,990   px $0.0000922  -$1.77   ↗      │
+│  ...                                                             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Everything the trading agent knows, in one screen:
+
+- **Hero metrics** — equity, return, max DD, Sharpe, Sortino. Updates
+  live as PM writes new audit rows.
+- **Kill-switch panel** — both kill-switches with current headroom
+  vs the configured cap. You see how close you are to the floor at
+  a glance.
+- **Active rules** — every rule from your YAML, with the
+  threshold rendered as a chunky number tinted to the rule's
+  severity (red for halt, amber for size cap, accent for trailing).
+- **Equity curve** with 24H / 7D / 1M / ALL range toggle. The line
+  extends to *now* even when PM has been quiet for hours, so you
+  see the current state — not just "the chart ends at the last
+  trade hours ago."
+- **Positions** table — qty, mark, value, P&L, drawdown from HWM.
+- **Trades** — full fill history with action badges (buy/sell/exit
+  color-coded), real source-side fill prices, realized PnL in
+  red/green, and clickable tx-hash links that route to solscan /
+  etherscan / basescan / arbiscan / etc. automatically based on
+  hash format.
+- **Notification bell** — pending alerts collapsed into a header
+  bell with a count badge tinted to the worst severity. Click to
+  open a popover with the alert list; ack individual alerts on
+  hover, or "clear all" in one click.
+- **Wallet address** in the header is a link straight to the
+  block-explorer page for that account.
+
+SSE-pushed updates the moment PM writes a new audit row. Read-only
+by design — no button in the UI fires a swap. All write paths stay
+in the CLI.
+
+Tailscale-friendly: bind the dashboard to your tailnet IP and view
+it from any device on your tailnet (phone, laptop, second monitor)
+without exposing it to the public internet.
 
 ---
 
@@ -151,6 +233,7 @@ schema, error vocabulary, and embedded-Python examples.
                                           ┌── stdout tail (live)
                                           │── audit.jsonl (append-only)
                                           │── alerts queue (sqlite + jsonl mirror)
+                                          │── dashboard (SSE → browser)
                                           │
                        (live mode only) ──▼── SwapExecutor
                                                 │
@@ -208,6 +291,8 @@ Bad configs fail at load, not runtime.
 | `scripts/alerts.py` | Ack-able alerts queue |
 | `scripts/audit.py` | Append-only JSONL |
 | `scripts/schema.py` | JSON Schema for rule YAML |
+| `scripts/dashboard/` | Read-only HTTP + SSE dashboard server |
+| `dashboard-ui/` | React + Tailwind frontend (built into `scripts/dashboard/static/`) |
 | `scripts/config.py` | Paths overridable via `PM_STATE_DIR`, `PM_AUDIT_PATH`, etc. |
 
 ### Tests
