@@ -20,136 +20,99 @@ records every decision.
 
 ---
 
-## What you can do with it
+## What you can ask the agent to do
 
-### Run a "weekly DCA into SOL" strategy live
+The skill is installed; the agent picks it up via SKILL.md frontmatter
+when the user's request matches. Examples of natural-language prompts
+and what the agent does with them:
 
-Author a 7-line Python strategy:
+### "Run my weekly DCA into SOL, cap losses at $50"
 
-```python
-# weekly_dca_wsol.py
-from pm.helpers import every_n_bars
+The agent drafts a tiny Python `decide()` callback (or picks one from
+`examples/strategies/`), wires it into a watch loop with both
+kill-switches enabled, and PM takes over: every 7 days it buys $100
+of WSOL via OnChainOS swap, every cycle it checks the user's rules
+(drawdown halt, position caps, trailing stops). The moment cumulative
+realized loss crosses $50 OR wallet equity drops $100 below baseline,
+the loop halts itself.
 
-def decide(state, market_data):
-    if every_n_bars(state['cycle_index'], 7) and state['cash_usd'] > 100:
-        return [{'action': 'buy', 'asset': 'WSOL', 'amount_usd': 100.0}]
-    return []
-```
+### "Watch my wallet for the next hour and tell me what's risky"
 
-Point PM at it:
+Agent starts PM in monitor mode against the address — no swaps fire,
+no keys needed. PM polls the wallet, derives positions, evaluates the
+configured rules every cycle. Whenever a rule would have triggered,
+PM emits a structured alert with the asset, the rule that fired, the
+recommended action, and the reason ("WSOL is 72% of portfolio,
+exceeds 40% cap (trim to 40%)"). The agent reads them off stdout or
+the alerts queue and surfaces them.
 
-```sh
-pm watch --config examples/conservative-majors.yaml \
-         --strategy weekly_dca_wsol.py \
-         --wallet <your-solana-address> \
-         --live --max-loss-usd 50 --max-wallet-loss-usd 100 \
-         --interval 86400
-```
+### "What happened to my portfolio overnight?"
 
-Every 7 days PM buys $100 of WSOL via OnChainOS swap. Every cycle PM
-checks the rules (drawdown halt at 30%, per-position cap at 60%,
-trailing stop at 25%) — when any trips, PM auto-exits. If cumulative
-realized loss crosses `--max-loss-usd` OR wallet equity drops more
-than `--max-wallet-loss-usd` from baseline, the loop halts itself.
+Episodic check-in — the agent reads PM's append-only audit log
+(`state/audit.jsonl`) since the user last asked, summarizes any rules
+that fired, any trades that executed, and the current equity vs the
+overnight low. The audit log is the source of truth; no remote
+service is involved.
 
-### Monitor an existing wallet without trading
+### "Did anything alert critical that I haven't seen?"
 
-Run PM in monitor mode against any wallet — no swaps fire, no keys
-needed, you just get structured alerts when rules would have triggered:
+The daemon pattern: PM runs as a background watch process; the agent
+queries the alerts queue (`pm alerts pending --severity critical`),
+shows the user any unacked critical alerts, and acks them once the
+user has been shown.
 
-```sh
-pm watch --config examples/conservative-majors.yaml \
-         --wallet <wallet-to-watch> \
-         --interval 60
-```
+### "Open the dashboard"
 
-One JSON record per cycle on stdout:
+Agent starts `pm dashboard` bound to the host's tailnet IP (or
+localhost). The user opens it on their phone or laptop and sees:
 
-```json
-{"cycle_index": 0, "mode": "monitor", "wallet": "8Pv2y2...nekP",
- "decisions": [{"action": "trim", "asset": "WSOL", "qty": 13.385,
-                "quote_usd_est": 1740.0,
-                "reason": "WSOL is 72.22% of portfolio, exceeds 40% cap (trim to 40%)",
-                "rule_id": "per-position-cap", "severity": "warn"}],
- "alerts_emitted": [{"alert_id": "...", "rule_id": "per-position-cap"}],
- "positions": {"total_equity_usd": 5400.0, "n_positions": 2, ...},
- "diagnostics": {"rules_evaluated": 3, "rules_fired": 1}}
-```
+- Live equity curve with 24H / 7D / 1M / ALL range toggle
+- Hero metrics (Equity / Return / Max DD / Sharpe / Sortino)
+- Active rules with chunky threshold numbers
+- Kill-switch headroom
+- Positions table
+- Full trade history with clickable tx-hash links to solscan /
+  etherscan / basescan (auto-routed by hash format)
+- A header bell showing pending alerts with per-alert + "clear all"
+  ack buttons
 
-### Pull pending alerts (the agent-daemon pattern)
+SSE-pushed updates as PM writes new audit rows. Read-only — no
+buttons fire swaps.
 
-PM runs in the background; your agent comes back later and pulls
-unacked alerts:
+### "Generate a Sharpe / max-DD report for the last month"
 
-```sh
-pm alerts pending --severity warn --limit 10
-```
+Agent runs `pm report` against the audit log and gets back
+`report.json` + `report.md` + `equity.png` with drawdown shading.
+Sharpe / Sortino / Calmar / max-DD / win rate / expectancy / CAGR
+all computed locally from the audit — no external services.
 
-```json
-{"ok": true, "result": {"count": 1, "alerts": [
-  {"alert_id": "0a3c...", "rule_id": "trailing-stop-meme",
-   "severity": "warn",
-   "decision": {"action": "full_exit", "asset": "BONK", "qty": 1234567,
-                "reason": "BONK dropped 31% from HWM (trail set at 25%)"},
-   "created_at_utc": "2026-05-20T13:07:06+00:00"}]}}
-```
+### "Backtest this same strategy on a year of historical data"
 
-```sh
-pm alerts ack 0a3c...
-```
+The strategy `.py` file the user authored for live mode is the same
+artifact the companion
+[`strategy-backtester`](https://github.com/paulomcg/strategy-backtester)
+skill drives against historical OHLCV. The agent invokes the
+backtester, gets back the same metrics + an interactive HTML report.
 
-### Generate a report from any audit log
+### "Halt everything immediately"
 
-```sh
-pm report --audit-path state/audit.jsonl --out ./report-may/
-```
+Agent kills the PM watch process. There is no persisted "live mode
+on" state — closing the terminal terminates the loop. To restart
+later, the user re-runs the original watch command.
 
-Writes `report.json` + `report.md` + `equity.png` (with drawdown
-shading). Sharpe / Sortino / Calmar / max-DD / win rate / expectancy /
-CAGR computed from the audit, no external services.
-
-### Open the live dashboard from another machine via Tailscale
-
-```sh
-pm dashboard --host $(tailscale ip -4 | head -1) --port 7777
-```
-
-Then on any tailnet-connected device, open `http://<this-host>:7777`.
-Hero metrics (Equity / Return / Max DD / Sharpe / Sortino), live
-equity curve with 24H/7D/1M/ALL range toggle, kill-switch headroom,
-active-rules panel, positions table, full trade history with
-clickable tx-explorer links (solscan / etherscan / basescan auto-
-routed by tx-hash format), and a header bell for pending alerts with
-per-alert + "clear all" ack buttons. SSE-pushed updates on every new
-audit row.
-
-### Demo end-to-end without a wallet or keys
-
-The repo ships a synthetic wallet snapshot:
-
-```sh
-pm watch --config examples/conservative-majors.yaml \
-         --positions-source examples/synthetic-wallet.json \
-         --interval 0 --iterations 3
-```
-
-The rule engine evaluates against the static snapshot, fires alerts,
-appends to the audit log. Zero risk, zero capital, full observability.
-
-### Use it from Claude Code / Codex / a custom agent
-
-Three integration paths:
+### Integration paths (Claude Code, Codex, custom agents)
 
 | Method | Path |
 |---|---|
 | Drop into Claude Code's skills dir | `cp -r . ~/.claude/skills/portfolio-manager/` then restart Claude |
-| Point a custom agent at the SKILL.md | parse YAML frontmatter (name / description / trigger phrases); shell out to `bin/pm` per command |
-| Register with the OKX Plugin Store | `plugin.yaml` carries the manifest (schema_version: 1) |
+| Point a custom agent at SKILL.md | parse YAML frontmatter (name / description / trigger phrases); shell out to `bin/pm` per command |
+| Register with the OKX Plugin Store | `plugin.yaml` schema_version: 1 |
 
-Every command emits `{"ok": bool, "result": {...}}` JSON envelopes on
-stdout. Errors print `FAILED: <category> <detail>` to stderr with
-stable machine-parseable category strings. See `SKILL.md` for the
-full schema, error vocabulary, and embedded-Python examples.
+Every command emits `{"ok": bool, "result": {...}}` JSON envelopes
+on stdout — agents don't have to parse English. Errors print
+`FAILED: <category> <detail>` to stderr with stable
+machine-parseable category strings. See `SKILL.md` for the full
+schema, error vocabulary, and embedded-Python examples.
 
 ---
 
