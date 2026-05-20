@@ -12,9 +12,18 @@ import {
 import type { EquityPoint } from "@/types"
 import { fmtTsShort, fmtUsd, fmtPct } from "@/lib/format"
 
+export type EquityRange = "24h" | "7d" | "1m" | "all"
+
+const RANGE_MS: Record<Exclude<EquityRange, "all">, number> = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "1m": 30 * 24 * 60 * 60 * 1000,
+}
+
 interface EquityChartProps {
   data: EquityPoint[]
   initialEquity?: number | null
+  range?: EquityRange
 }
 
 function ChartTooltip({ active, payload }: any) {
@@ -39,25 +48,64 @@ function ChartTooltip({ active, payload }: any) {
   )
 }
 
-export function EquityChart({ data, initialEquity }: EquityChartProps) {
-  const last = data[data.length - 1]?.equity_usd ?? initialEquity ?? 0
-  const baseline = initialEquity ?? data[0]?.equity_usd ?? last
+export function EquityChart({
+  data,
+  initialEquity,
+  range = "all",
+}: EquityChartProps) {
+  // Filter to the selected range, then append a synthetic "now" point
+  // holding the last known equity value flat. This makes the chart
+  // extend to the right edge of the viewport even when PM has been
+  // halted for hours — Paulo sees a continuous line from his last
+  // trade to "now" instead of a chart that ends mid-axis.
+  const series = useMemo(() => {
+    let s = data
+    if (range !== "all" && data.length) {
+      const lastTs = new Date(data[data.length - 1].ts).getTime()
+      const nowMs = Date.now()
+      // Anchor the window to "now" so the right edge is always
+      // the current moment regardless of when the last point landed.
+      const cutoffMs = Math.max(lastTs, nowMs) - RANGE_MS[range]
+      s = data.filter((p) => new Date(p.ts).getTime() >= cutoffMs)
+    }
+    if (s.length) {
+      const last = s[s.length - 1]
+      const lastMs = new Date(last.ts).getTime()
+      const nowMs = Date.now()
+      // Only pad if the last cycle is older than a few seconds —
+      // otherwise the "now" point overlaps the real one.
+      if (nowMs - lastMs > 10_000) {
+        s = [
+          ...s,
+          {
+            ts: new Date(nowMs).toISOString(),
+            equity_usd: last.equity_usd,
+            drawdown_pct: last.drawdown_pct,
+          },
+        ]
+      }
+    }
+    return s
+  }, [data, range])
+
+  const last = series[series.length - 1]?.equity_usd ?? initialEquity ?? 0
+  const baseline = initialEquity ?? series[0]?.equity_usd ?? last
   const positive = last >= baseline
   const gradId = "equity-fill-live"
 
   const yDomain = useMemo(() => {
-    if (!data.length) return [0, 1]
-    const values = data.map((d) => d.equity_usd)
+    if (!series.length) return [0, 1]
+    const values = series.map((d) => d.equity_usd)
     const min = Math.min(...values, baseline)
     const max = Math.max(...values, baseline)
     const pad = Math.max((max - min) * 0.12, max * 0.02)
     return [Math.floor(min - pad), Math.ceil(max + pad)]
-  }, [data, baseline])
+  }, [series, baseline])
 
-  if (data.length === 0) {
+  if (series.length === 0) {
     return (
       <div className="h-60 grid place-items-center text-sm text-muted-foreground">
-        no cycles recorded yet
+        {data.length === 0 ? "no cycles recorded yet" : "no data in selected range"}
       </div>
     )
   }
@@ -66,7 +114,7 @@ export function EquityChart({ data, initialEquity }: EquityChartProps) {
     <div className="h-60 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
-          data={data}
+          data={series}
           margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
         >
           <defs>

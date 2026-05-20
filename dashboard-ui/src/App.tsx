@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardHeader } from "@/components/DashboardHeader"
 import { HeroMetrics } from "@/components/HeroMetrics"
 import { KillSwitchPanel } from "@/components/KillSwitchPanel"
 import { ActiveRulesPanel } from "@/components/ActiveRulesPanel"
-import { EquityChart } from "@/components/EquityChart"
+import { EquityChart, type EquityRange } from "@/components/EquityChart"
+import { RangeToggle } from "@/components/RangeToggle"
 import { PositionsPanel } from "@/components/PositionsPanel"
 import { TradesPanel } from "@/components/TradesPanel"
 import { useFills } from "@/hooks/useFills"
@@ -28,6 +29,7 @@ export default function App() {
       : null
 
   const { snapshot, equity, conn, error, refetch } = useDashboardState(wallet)
+  const [range, setRange] = useState<EquityRange>("all")
 
   // Refetch fills whenever a new snapshot arrives (cheapest "something
   // happened" signal — the SSE pump bumps the snapshot reference).
@@ -107,19 +109,23 @@ export default function App() {
         </div>
 
         <Card className="border-border bg-card py-0 shadow-none gap-0">
-          <CardHeader className="px-5 py-4 border-b flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardHeader className="px-5 py-4 border-b flex flex-row items-center justify-between gap-3 space-y-0">
             <CardTitle className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-medium flex items-center gap-2">
               <LineChartIcon className="size-3.5" />
               Equity curve
             </CardTitle>
-            <div className="text-[10px] text-muted-foreground tabular-nums">
-              {equity?.count ?? 0} data points
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {equity?.count ?? 0} data points
+              </span>
+              <RangeToggle value={range} onChange={setRange} />
             </div>
           </CardHeader>
           <CardContent className="px-3 pt-4 pb-3">
             <EquityChart
               data={equity?.series ?? []}
               initialEquity={metrics.initial_equity_usd}
+              range={range}
             />
           </CardContent>
         </Card>
