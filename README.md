@@ -109,37 +109,7 @@ later, the user re-runs the original watch command.
 
 ## Dashboard
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ ● portfolio-manager  wallet: 8Pv2y2…nekP ↗   updated 14:32 · 🔔3 │
-├──────────────────────────────────────────────────────────────────┤
-│  Equity      Return    Max DD    Sharpe    Sortino               │
-│  $1,176.02   +17.96%   2.13%     8.89      4.36                  │
-├──────────────────────────────────────────────────────────────────┤
-│  Kill switch                  │  Active rules                    │
-│  realized:   $0.00 / $15      │  Halt-on-drawdown         30%   │
-│  wallet eq:  -$1.87 / $10     │  Max position size        60%   │
-│                                │  Trailing stop            25%   │
-├──────────────────────────────────────────────────────────────────┤
-│  Equity curve                          [24H] [7D] [1M] [ALL]    │
-│                                              ╱╲                  │
-│                                         ╱╲╱╲╱  ╲╲   ⎯⎯⎯⎯⎯⎯⎯⎯   │
-│                                    ╱╲╱╲╱        ╲╱               │
-│                              ╱╲╱╲╱                               │
-│                         ╱╲╱╲╱                                    │
-│                    ╱╲╱╲╱                                         │
-├──────────────────────────────────────────────────────────────────┤
-│  Positions                                                       │
-│  WSOL    9.3 @ $133     $1,238    +12.3%    drawdown 2.1%       │
-│  USDC                   $0                                       │
-├──────────────────────────────────────────────────────────────────┤
-│  Trades                                              23 fills    │
-│  13:07  sell  PERP    320,978   px $0.0000656  +$3.24   ↗      │
-│  13:06  buy   PERP    320,978   px $0.0000700           ↗      │
-│  12:27  sell  PERP    245,990   px $0.0000922  -$1.77   ↗      │
-│  ...                                                             │
-└──────────────────────────────────────────────────────────────────┘
-```
+<img width="1376" height="1032" alt="dashboard" src="https://github.com/user-attachments/assets/c03c8df6-a619-4b88-b93c-c0a8fea4a251" />
 
 Everything the trading agent knows, in one screen:
 
