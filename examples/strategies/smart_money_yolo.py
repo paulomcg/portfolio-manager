@@ -51,6 +51,14 @@ SIGNAL_CACHE_SEC = 30    # cache TTL; balances API spend vs reaction speed
 TRAIL_FROM_PEAK_PCT = 0.05  # 5% from HWM
 STOP_LOSS_PCT = -0.15    # -15% absolute loss vs cost basis (backstop)
 
+# Signal decay exit: if a held position falls out of the ranked-buys feed
+# for STALE_CYCLES_THRESHOLD consecutive cycles, exit it. Rationale: the
+# whole strategy thesis is "follow smart money". A position smart money
+# stopped buying and isn't dumping either is dead weight — exit and free
+# the capital for the next fresh signal. At 10s cycles, 30 cycles = ~5
+# minutes of "no smart-money buy-side conviction" before we walk away.
+STALE_CYCLES_THRESHOLD = 30
+
 STABLES_AND_SKIP = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD", "SOL"}
 
 CLI_BIN = "onchainos"
@@ -58,6 +66,11 @@ CLI_BIN = "onchainos"
 # Per-process caches (PM watch is a long-running process, so caches persist).
 _buy_cache: dict[str, Any] = {"ts": 0.0, "ranked": []}
 _sell_cache: dict[str, Any] = {"ts": 0.0, "by_addr": {}}
+
+# Tracks consecutive cycles each held position has been ABSENT from the
+# ranked-buys feed. Reset to 0 when the position reappears. Persists across
+# decide() calls in the same PM process.
+_stale_counter: dict[str, int] = {}
 
 
 # ---------------- signal helpers ----------------
@@ -202,8 +215,26 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
     held = _strategy_held(state)
     actions: list[dict[str, Any]] = []
 
-    # 1) Check exits on every held position.
+    # 0) Refresh buy/sell signal feeds first — used by both the exit checks
+    #    (sell_pressure / stale-signal) and the new-entry section below.
+    ranked = _ranked_buys()
+    ranked_addrs = {r["address"].lower() for r in ranked}
     sell_pressure = _sell_pressure_by_addr()
+
+    # Update the stale-signal counter: increment for held positions not in
+    # the current ranked set, reset for those that are.
+    held_addrs_now = {(p["address"] or "").lower() for p in held}
+    for addr in list(_stale_counter.keys()):
+        if addr not in held_addrs_now:
+            del _stale_counter[addr]  # position is gone, forget it
+    for p in held:
+        addr_lower = (p["address"] or "").lower()
+        if addr_lower in ranked_addrs:
+            _stale_counter[addr_lower] = 0
+        else:
+            _stale_counter[addr_lower] = _stale_counter.get(addr_lower, 0) + 1
+
+    # 1) Check exits on every held position.
     sold_addrs: set[str] = set()
     for p in held:
         addr_lower = (p["address"] or "").lower()
@@ -226,6 +257,11 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
             and current_val < hwm * (1.0 - TRAIL_FROM_PEAK_PCT)
         )
 
+        # Signal decay: position has been absent from ranked buys for
+        # STALE_CYCLES_THRESHOLD consecutive cycles → smart money has
+        # walked away, exit and free the capital for fresh signals.
+        stale_triggered = _stale_counter.get(addr_lower, 0) >= STALE_CYCLES_THRESHOLD
+
         exit_reason: str | None = None
         if trailing_triggered:
             exit_reason = "trail_from_peak"
@@ -233,6 +269,8 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
             exit_reason = "stop_loss"
         elif sell_pressure.get(addr_lower, 0) >= DUMP_WALLETS_THRESHOLD:
             exit_reason = "smart_money_dump"
+        elif stale_triggered:
+            exit_reason = "signal_decay"
 
         if exit_reason:
             actions.append({
@@ -246,9 +284,8 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
     # 2) Find buy candidates we don't already hold (and aren't selling).
     #    Also exclude any token with active dump pressure — smart money
     #    selling at the same time as buying is a contradicting signal we
-    #    won't fade into.
+    #    won't fade into. `ranked` was already fetched at the top of decide().
     held_addrs = {(p["address"] or "").lower() for p in held} - sold_addrs
-    ranked = _ranked_buys()
     new_candidates = [
         c for c in ranked
         if c["address"].lower() not in held_addrs
