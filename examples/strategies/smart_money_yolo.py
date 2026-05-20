@@ -101,6 +101,18 @@ _memepump_cache: dict[str, Any] = {"ts": 0.0, "by_addr": {}}   # memepump MIGRAT
 # decide() calls in the same PM process.
 _stale_counter: dict[str, int] = {}
 
+# Tracks unix-ts of the last sell for each token. Used to enforce a re-buy
+# cooldown — if we just sold a token (dump-detect, trailing-stop, signal-decay,
+# or any other exit), we don't want the strategy whipsawing back in 10s later
+# at a worse price. Persists across decide() calls.
+_recently_sold: dict[str, float] = {}
+
+# Cooldown window — 30 min. Long enough that a momentary dump that triggered
+# our exit isn't immediately followed by re-entry on the bounce (the TROLL
+# / PERP whipsaw pattern), but short enough that genuinely fresh momentum
+# (different signal, hours later) can still re-enter.
+REBUY_COOLDOWN_SEC = 1800
+
 
 # ---------------- signal helpers ----------------
 
@@ -554,16 +566,19 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
                 "reason": exit_reason,
             })
             sold_addrs.add(addr_lower)
+            _recently_sold[addr_lower] = time.time()
 
     # 2) Find buy candidates we don't already hold (and aren't selling).
     #    Also exclude any token with active dump pressure — smart money
     #    selling at the same time as buying is a contradicting signal we
     #    won't fade into. `ranked` was already fetched at the top of decide().
     held_addrs = {(p["address"] or "").lower() for p in held} - sold_addrs
+    now_ts = time.time()
     new_candidates = [
         c for c in ranked
         if c["address"].lower() not in held_addrs
         and sell_pressure.get(c["address"].lower(), 0) < DUMP_WALLETS_THRESHOLD
+        and (now_ts - _recently_sold.get(c["address"].lower(), 0)) >= REBUY_COOLDOWN_SEC
     ]
 
     # 3) How many positions will we hold after the exits this cycle?
