@@ -40,11 +40,16 @@ MIN_WALLETS = 2          # distinct smart-money BUYERS required to enter
 DUMP_WALLETS_THRESHOLD = 2   # distinct smart-money SELLERS required to exit
 MIN_VOLUME_USD = 500
 MIN_MARKET_CAP_USD = 250_000
-SIGNAL_WINDOW_MIN = 240
+SIGNAL_WINDOW_MIN = 90   # 1.5h — favor fresh explosive signals only
 SIGNAL_CACHE_SEC = 50    # < PM cycle (60s) so cache refreshes once per cycle
 
-TAKE_PROFIT_PCT = 0.20   # +20% unrealized → cash out
-STOP_LOSS_PCT = -0.15    # -15% unrealized → cut
+# Trailing exit from per-position high — replaces fixed take-profit.
+# Once a position has printed above its cost basis at some point, exit when
+# the current value drops TRAIL_FROM_PEAK_PCT from the high-water mark.
+# Effect: lock in gains without waiting for a fixed +20% target, and act as
+# a tighter floor on losing entries (HWM stays at entry if price never rises).
+TRAIL_FROM_PEAK_PCT = 0.05  # 5% from HWM
+STOP_LOSS_PCT = -0.15    # -15% absolute loss vs cost basis (backstop)
 
 STABLES_AND_SKIP = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD", "SOL"}
 
@@ -204,9 +209,26 @@ def decide(state, market_data):  # noqa: ARG001 — market_data unused
         addr_lower = (p["address"] or "").lower()
         pct = _unrealized_pct(p)
 
+        # Trailing-from-peak: exit when position is down TRAIL_FROM_PEAK_PCT
+        # from its high-water mark AND has actually been in profit at some
+        # point (HWM > cost_basis). This locks in gains without holding for
+        # a fixed target.
+        try:
+            hwm = float(p.get("high_water_mark_usd") or 0)
+            cost = float(p.get("cost_basis_usd") or 0)
+            current_val = float(p.get("value_usd") or 0)
+        except (TypeError, ValueError):
+            hwm = cost = current_val = 0.0
+        trailing_triggered = (
+            hwm > 0
+            and cost > 0
+            and hwm > cost  # has been profitable at some point
+            and current_val < hwm * (1.0 - TRAIL_FROM_PEAK_PCT)
+        )
+
         exit_reason: str | None = None
-        if pct is not None and pct >= TAKE_PROFIT_PCT:
-            exit_reason = "take_profit"
+        if trailing_triggered:
+            exit_reason = "trail_from_peak"
         elif pct is not None and pct <= STOP_LOSS_PCT:
             exit_reason = "stop_loss"
         elif sell_pressure.get(addr_lower, 0) >= DUMP_WALLETS_THRESHOLD:
