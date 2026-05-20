@@ -32,10 +32,10 @@ from typing import Any
 # ---------------- tunables ----------------
 CHAIN_INDEX = 501  # Solana
 ENTRY_USD = 25.0   # per-position notional; sized for a $80 bag
-MIN_WALLETS = 3    # smart-money buyer threshold
+MIN_WALLETS = 2    # smart-money buyer threshold (2 = looser; raise to 3 for stricter)
 MIN_VOLUME_USD = 500  # per-trade min for the tracker query
-MIN_MARKET_CAP_USD = 500_000  # liquidity floor
-SIGNAL_WINDOW_MIN = 90  # only consider trades fresher than this
+MIN_MARKET_CAP_USD = 250_000  # liquidity floor
+SIGNAL_WINDOW_MIN = 240  # 4h — broad enough to catch overnight signal lulls
 SIGNAL_CACHE_SEC = 60   # don't re-poll the tracker more often than this
 CLI_BIN = "onchainos"
 
@@ -135,12 +135,24 @@ def _poll_signals() -> list[dict[str, Any]]:
 
 
 def _current_position(state: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the first non-stablecoin position (we're single-position by design)."""
-    stables = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD"}
+    """Return the strategy's active rotation slot — a non-stable position with
+    a known token contract address (i.e., an SPL token we can sell via swap).
+
+    Skips positions without a contract address:
+      - Native SOL has no address; selling it would require wrapping. Leave it
+        alone, it acts as a passive baseline.
+      - Brand-new positions from this very cycle's fill (PM's
+        _apply_fill_to_state initializes address=None and the next wallet
+        poll backfills it). Skipping avoids attempting a sell with no source
+        token address — which fails the executor's preflight.
+    """
+    stables = {"USDC", "USDT", "USDG", "DAI", "PYUSD", "FDUSD", "SOL"}
     for p in state.get("positions", []) or []:
         sym = (p.get("asset") or "").upper()
         if sym in stables:
             continue
+        if not (p.get("address") or "").strip():
+            continue  # no contract address → not strategy-tradable
         if float(p.get("qty", 0)) > 0:
             return p
     return None
