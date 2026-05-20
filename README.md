@@ -5,10 +5,9 @@ the **strategy** (a Python `decide()` callback the agent authors —
 "when to open"), the **rules** (drawdown halts, position caps,
 trailing stops — "when to exit"), the **executor** (real swaps via
 OnChainOS or a built-in synthetic engine for paper-trading), the
-**alerts queue**, the **append-only audit log**, the **`pm report`**
-metrics generator (Sharpe / Sortino / max DD / win rate / equity
-chart from any audit), and a **read-only local web dashboard** for
-live observability.
+**alerts queue**, the **append-only audit log**, and the **metrics
+engine** (Sharpe / Sortino / max DD / win rate computed locally from
+any audit).
 
 The same `.py` strategy file works in live mode AND against historical
 OHLCV via the companion [`strategy-backtester`](https://github.com/paulomcg/strategy-backtester)
@@ -69,32 +68,12 @@ and acks them once the user has been shown.
 
 ---
 
-> **"Open the dashboard."**
+> **"How am I doing — Sharpe, max DD, win rate?"**
 
-Agent starts `pm dashboard` bound to the host's tailnet IP (or
-localhost). The user opens it on phone or laptop and sees:
-
-- Live equity curve with **24H / 7D / 1M / ALL** range toggle
-- Hero metrics — equity, return, max DD, Sharpe, Sortino
-- Active rules with chunky threshold numbers
-- Kill-switch headroom (both realized + wallet-equity)
-- Positions table
-- Full trade history with clickable tx-hash links to solscan /
-  etherscan / basescan (auto-routed by hash format)
-- A header bell showing pending alerts with per-alert + "clear all"
-  ack buttons
-
-SSE-pushed updates on every new audit row. Read-only by design —
-no UI button fires a swap.
-
----
-
-> **"Generate a Sharpe / max-DD report for the last month."**
-
-Agent runs `pm report` against the audit log and gets back
-`report.json` + `report.md` + `equity.png` with drawdown shading.
-Sharpe, Sortino, Calmar, max-DD, win rate, expectancy, CAGR — all
-computed locally from the audit. No external services.
+The agent computes those metrics locally from PM's audit log —
+Sharpe, Sortino, Calmar, max DD, win rate, expectancy, CAGR — and
+surfaces them. No external services. The agent can also export a
+JSON payload if the user wants to chart it themselves.
 
 ---
 
@@ -114,22 +93,6 @@ HTML report.
 Agent kills the PM watch process. There is no persisted "live mode
 on" state — closing the terminal terminates the loop. To restart
 later, the user re-runs the original watch command.
-
----
-
-### Integration paths (Claude Code, Codex, custom agents)
-
-| Method | Path |
-|---|---|
-| Drop into Claude Code's skills dir | `cp -r . ~/.claude/skills/portfolio-manager/` then restart Claude |
-| Point a custom agent at SKILL.md | parse YAML frontmatter (name / description / trigger phrases); shell out to `bin/pm` per command |
-| Register with the OKX Plugin Store | `plugin.yaml` schema_version: 1 |
-
-Every command emits `{"ok": bool, "result": {...}}` JSON envelopes
-on stdout — agents don't have to parse English. Errors print
-`FAILED: <category> <detail>` to stderr with stable
-machine-parseable category strings. See `SKILL.md` for the full
-schema, error vocabulary, and embedded-Python examples.
 
 ---
 
@@ -153,6 +116,20 @@ export OKX_API_KEY=... OKX_SECRET_KEY=... OKX_PASSPHRASE=...
 PM itself never reads those env vars — the underlying `onchainos` CLI
 does. Grep the source: no `OKX_*` references outside docs.
 
+### Wiring into an agent (Claude Code, Codex, custom harness)
+
+| Method | Path |
+|---|---|
+| Drop into Claude Code's skills dir | `cp -r . ~/.claude/skills/portfolio-manager/` then restart Claude |
+| Point a custom agent at SKILL.md | parse YAML frontmatter (name / description / trigger phrases); shell out to `bin/pm` per command |
+| Register with the OKX Plugin Store | `plugin.yaml` schema_version: 1 |
+
+Every command emits `{"ok": bool, "result": {...}}` JSON envelopes
+on stdout — agents don't have to parse English. Errors print
+`FAILED: <category> <detail>` to stderr with stable
+machine-parseable category strings. See `SKILL.md` for the full
+schema, error vocabulary, and embedded-Python examples.
+
 ---
 
 ## Architecture
@@ -174,7 +151,6 @@ does. Grep the source: no `OKX_*` references outside docs.
                                           ┌── stdout tail (live)
                                           │── audit.jsonl (append-only)
                                           │── alerts queue (sqlite + jsonl mirror)
-                                          │── dashboard (SSE → browser)
                                           │
                        (live mode only) ──▼── SwapExecutor
                                                 │
@@ -198,7 +174,6 @@ does. Grep the source: no `OKX_*` references outside docs.
   - Per-cycle JSONL on stdout
   - Append-only audit log (`state/audit.jsonl`)
   - Ack-able alerts queue (sqlite + jsonl mirror)
-  - Read-only dashboard (HTTP + SSE)
 
 ### Three risk rule types
 
@@ -233,8 +208,6 @@ Bad configs fail at load, not runtime.
 | `scripts/alerts.py` | Ack-able alerts queue |
 | `scripts/audit.py` | Append-only JSONL |
 | `scripts/schema.py` | JSON Schema for rule YAML |
-| `scripts/dashboard/` | Read-only HTTP + SSE dashboard server |
-| `dashboard-ui/` | React + Tailwind frontend (built into `scripts/dashboard/static/`) |
 | `scripts/config.py` | Paths overridable via `PM_STATE_DIR`, `PM_AUDIT_PATH`, etc. |
 
 ### Tests
@@ -246,9 +219,8 @@ Bad configs fail at load, not runtime.
 Covers the rule engine, schema validation, position derivation, HWM
 persistence, alerts queue, audit log, watch loops (monitor + live),
 swap executors, CLI integration, strategy loader, market data,
-`pm report`, dashboard endpoints (on a real ThreadingHTTPServer
-instance), and end-to-end strategy-in-cycle integration. State is
-isolated per-test via `PM_STATE_DIR` env override.
+the metrics engine, and end-to-end strategy-in-cycle integration.
+State is isolated per-test via `PM_STATE_DIR` env override.
 
 ---
 
@@ -266,9 +238,6 @@ isolated per-test via `PM_STATE_DIR` env override.
   — a position whose liquidity vanishes mid-hold doesn't book a
   realized fill, so the realized-only kill stays at zero while the
   wallet bleeds. The wallet-equity kill catches that.
-- The dashboard is read-only by design. No buttons fire swaps; the UI
-  never mutates state. All write paths stay in the CLI.
-
 ---
 
 ## License
